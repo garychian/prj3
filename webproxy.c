@@ -1,12 +1,33 @@
 #include <errno.h>
 #include <getopt.h>
 #include <signal.h>
+#include <string.h>
 #include <strings.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <signal.h>
+#include <curl/curl.h>
 
 #include "gfserver.h"
+//The following debug macros are directly from
+//http://c.learncodethehardway.org/book/ex20.html
+#ifdef NDEBUG
+#define debug(M, ...)
+#else
+#define debug(M, ...) fprintf(stderr, "DEBUG %s:%d: " M "\n", __FILE__, __LINE__, ##__VA_ARGS__)
+#endif
+
+#define clean_errno() (errno == 0 ? "None" : strerror(errno))
+#define log_err(M, ...) fprintf(stderr, "[ERROR] (%s:%d: errno: %s) " M "\n", __FILE__, __LINE__, clean_errno(), ##__VA_ARGS__)
+#define log_warn(M, ...) fprintf(stderr, "[WARN] (%s:%d: errno: %s) " M "\n", __FILE__, __LINE__, clean_errno(), ##__VA_ARGS__)
+#define log_info(M, ...) fprintf(stderr, "[INFO] (%s:%d) " M "\n", __FILE__, __LINE__, ##__VA_ARGS__)
+#define check(A, M, ...) if(!(A)) { log_err(M, ##__VA_ARGS__); errno=0; goto error; }
+#define sentinel(M, ...)  { log_err(M, ##__VA_ARGS__); errno=0; goto error; }
+#define check_mem(A) check((A), "Out of memory.")
+#define check_debug(A, M, ...) if(!(A)) { debug(M, ##__VA_ARGS__); errno=0; goto error; }
+
+//
+
                                                                 \
 #define USAGE                                                                 \
 "usage:\n"                                                                    \
@@ -29,7 +50,7 @@ static struct option gLongOptions[] = {
   {NULL,            0,                      NULL,             0}
 };
 
-extern ssize_t handle_with_file(gfcontext_t *ctx, char *path, void* arg);
+extern ssize_t handle_with_curl(gfcontext_t *ctx, char *path, void* arg);
 
 static gfserver_t gfs;
 
@@ -46,6 +67,7 @@ int main(int argc, char **argv) {
   unsigned short port = 8888;
   unsigned short nworkerthreads = 1;
   char *server = "s3.amazonaws.com/content.udacity-data.com";
+  CURLcode cg_init;
 
   if (signal(SIGINT, _sig_handler) == SIG_ERR){
     fprintf(stderr,"Can't catch SIGINT...exiting.\n");
@@ -80,6 +102,11 @@ int main(int argc, char **argv) {
   }
   
   /* SHM initialization...*/
+  cg_init = curl_global_init(CURL_GLOBAL_ALL);
+  if (cg_init != 0){
+    log_err("curl_global_init failed to initialize properly");
+  	exit(1);
+  }
 
   /*Initializing server*/
   gfserver_init(&gfs, nworkerthreads);
@@ -87,9 +114,9 @@ int main(int argc, char **argv) {
   /*Setting options*/
   gfserver_setopt(&gfs, GFS_PORT, port);
   gfserver_setopt(&gfs, GFS_MAXNPENDING, 10);
-  gfserver_setopt(&gfs, GFS_WORKER_FUNC, handle_with_file);
+  gfserver_setopt(&gfs, GFS_WORKER_FUNC, handle_with_curl);
   for(i = 0; i < nworkerthreads; i++)
-    gfserver_setopt(&gfs, GFS_WORKER_ARG, i, "data");
+    gfserver_setopt(&gfs, GFS_WORKER_ARG, i, server);
 
   /*Loops forever*/
   gfserver_serve(&gfs);
