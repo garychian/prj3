@@ -46,12 +46,9 @@ ssize_t handle_with_curl(gfcontext_t *ctx, char *path, void* arg){
 	else{
 		return EXIT_FAILURE;
 	}
-	curl_easy_cleanup(easy_handle);
-	free(data.memory);
+
+
 	printf("%lu bytes retrieved\n", (long)data.size);
-	//printf("%s\n", data.memory);
-
-
 	gfs_sendheader(ctx, GF_OK, data.size);
 
 	/* Sending the file contents chunk by chunk. */
@@ -66,7 +63,8 @@ ssize_t handle_with_curl(gfcontext_t *ctx, char *path, void* arg){
 		}
 		bytes_transferred += write_len;
 	}
-
+	curl_easy_cleanup(easy_handle);
+	free(data.memory);
 	return bytes_transferred;
 }
 
