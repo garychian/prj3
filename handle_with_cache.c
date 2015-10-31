@@ -4,53 +4,64 @@
 #include <string.h>
 #include <unistd.h>
 #include <errno.h>
+#include <sys/msg.h>
+
+#include "shm_channel.h"
 
 #include "gfserver.h"
-
-//Replace with an implementation of handle_with_cache and any other
+//Replace with an implementation of handle_with_curl and any other
 //functions you may need.
 
-ssize_t handle_with_file(gfcontext_t *ctx, char *path, void* arg){
-	int fildes;
-	size_t file_len, bytes_transferred;
-	ssize_t read_len, write_len;
-	char buffer[4096];
-	char *data_dir = arg;
+struct MemoryStruct{
+	char *memory;
+	size_t size;
+};
 
+size_t write_memory_cb(void *contents, size_t size, size_t nmemb, void *userp);
+int send_contents(gfcontext_t *ctx, struct MemoryStruct * data);
+void mem_struct_init(struct MemoryStruct *mem);
+
+ssize_t handle_with_cache(gfcontext_t *ctx, char *path, void* arg){
+
+	char buffer[BUFFER_LEN];
+	char *data_dir = arg;
+	struct MemoryStruct data;
+	int msqid;
+	msgbuf msg;
+	CURLcode curl_ret_code;
+
+	mem_struct_init(&data);
 	strcpy(buffer,data_dir);
 	strcat(buffer,path);
+	msg.mtype = 2;
+	strcpy(msg.mtext, buffer);
 
-	if( 0 > (fildes = open(buffer, O_RDONLY))){
-		if (errno == ENOENT)
-			/* If the file just wasn't found, then send FILE_NOT_FOUND code*/ 
-			return gfs_sendheader(ctx, GF_FILE_NOT_FOUND, 0);
+	fprintf(stdout, "cur_easy_perform.path = %s\n", buffer);
+	//Create ipc message queue. Check if msgget performed okay
+	msqid = msgget(MESSAGE_KEY, 0777 | IPC_CREAT);
+	if (msqid == -1)
+		perror("msgget: ");
+	//Add message struct to the queue
+	msgsnd(msqid, &msg, sizeof(msgbuf) - sizeof(long), 0);
+	//performed okay
+	if (curl_ret_code == 0){
+		printf("%lu bytes retrieved\n", (long)data.size);
+		gfs_sendheader(ctx, GF_OK, data.size);
+		/* Sending the file contents chunk by chunk. */
+		int ret_sc = send_contents(ctx, &data);
+		if (ret_sc == 0)
+			return data.size;
 		else
-			/* Otherwise, it must have been a server error. gfserver library will handle*/ 
 			return EXIT_FAILURE;
 	}
-
-	/* Calculating the file size */
-	file_len = lseek(fildes, 0, SEEK_END);
-	lseek(fildes, 0, SEEK_SET);
-
-	gfs_sendheader(ctx, GF_OK, file_len);
-
-	/* Sending the file contents chunk by chunk. */
-	bytes_transferred = 0;
-	while(bytes_transferred < file_len){
-		read_len = read(fildes, buffer, 4096);
-		if (read_len <= 0){
-			fprintf(stderr, "handle_with_file read error, %zd, %zu, %zu", read_len, bytes_transferred, file_len );
-			return EXIT_FAILURE;
-		}
-		write_len = gfs_send(ctx, buffer, read_len);
-		if (write_len != read_len){
-			fprintf(stderr, "handle_with_file write error");
-			return EXIT_FAILURE;
-		}
-		bytes_transferred += write_len;
+	//couldn't resolve host
+	else if (curl_ret_code == 22){
+		return gfs_sendheader(ctx, GF_FILE_NOT_FOUND, 0);
+	}
+	//any other error, it must have been server error. gfserver library will handle
+	else{
+		return EXIT_FAILURE;
 	}
 
-	return bytes_transferred;
 }
 

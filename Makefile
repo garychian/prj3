@@ -9,7 +9,7 @@ endif
 
 PROXY_OBJ := webproxy.o steque.o
 
-all: webproxy
+all: webproxy simplecached
 
 webproxy: $(PROXY_OBJ) handle_with_cache.o handle_with_curl.o shm_channel.o gfserver.o 
 	$(CC) -o $@ $(CFLAGS) $(CURL_CFLAGS) $^ $(LDFLAGS) $(CURL_LIBS)

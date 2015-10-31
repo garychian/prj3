@@ -7,8 +7,13 @@
 #include <stdio.h>
 #include <signal.h>
 #include <curl/curl.h>
+#include <sys/ipc.h>
+#include <sys/shm.h>
+#include "steque.h"
 
 #include "gfserver.h"
+
+steque_t * QUEUE;
 //The following debug macros are directly from
 //http://c.learncodethehardway.org/book/ex20.html
 #ifdef NDEBUG
@@ -28,17 +33,17 @@
 
 //
 
-                                                                \
+
 #define USAGE                                                                 \
-"usage:\n"                                                                    \
-"  webproxy [options]\n"                                                     \
-"options:\n"                                                                  \
-"  -p [listen_port]    Listen port (Default: 8888)\n"                         \
-"  -t [thread_count]   Num worker threads (Default: 1, Range: 1-1000)\n"      \
-"  -s [server]         The server to connect to (Default: Udacity S3 instance)"\
-"  -h                  Show this help message\n"                              \
-"special options:\n"                                                          \
-"  -d [drop_factor]    Drop connects if f*t pending requests (Default: 5).\n"
+"usage:\n" \
+"	webproxy [options]\n" \
+"options:\n" \
+"	-n number of segments to use in communication with cache.\n" \
+"	-z the size (in bytes) of the segments. \n" \
+"	-p port for incoming requests\n" \
+"	-t number of worker threads\n" \
+"	-s server address(e.g. “localhost:8080”, or “example.com”)\n" \
+"	-h print a help message \n"
 
 
 /* OPTIONS DESCRIPTOR ====================================================== */
@@ -50,7 +55,7 @@ static struct option gLongOptions[] = {
   {NULL,            0,                      NULL,             0}
 };
 
-extern ssize_t handle_with_curl(gfcontext_t *ctx, char *path, void* arg);
+extern ssize_t handle_with_cache(gfcontext_t *ctx, char *path, void* arg);
 
 static gfserver_t gfs;
 
@@ -64,10 +69,16 @@ static void _sig_handler(int signo){
 /* Main ========================================================= */
 int main(int argc, char **argv) {
   int i, option_char = 0;
+  int shm_ret;
+  size_t size_segments = 4096;
   unsigned short port = 8888;
+  unsigned short nsegments = 1;
   unsigned short nworkerthreads = 1;
   char *server = "s3.amazonaws.com/content.udacity-data.com";
   CURLcode cg_init;
+  //Initialize queue
+  QUEUE = malloc(sizeof(steque_t));
+  steque_init(QUEUE);
 
   if (signal(SIGINT, _sig_handler) == SIG_ERR){
     fprintf(stderr,"Can't catch SIGINT...exiting.\n");
@@ -80,8 +91,14 @@ int main(int argc, char **argv) {
   }
 
   // Parse and set command line arguments
-  while ((option_char = getopt_long(argc, argv, "p:t:s:h", gLongOptions, NULL)) != -1) {
+  while ((option_char = getopt_long(argc, argv, "n:z:p:t:s:h", gLongOptions, NULL)) != -1) {
     switch (option_char) {
+      case 'n':
+    	nsegments = atoi(optarg);
+    	break;
+      case 'z':
+    	size_segments = atoi(optarg);
+    	break;
       case 'p': // listen-port
         port = atoi(optarg);
         break;
@@ -114,7 +131,17 @@ int main(int argc, char **argv) {
   /*Setting options*/
   gfserver_setopt(&gfs, GFS_PORT, port);
   gfserver_setopt(&gfs, GFS_MAXNPENDING, 10);
-  gfserver_setopt(&gfs, GFS_WORKER_FUNC, handle_with_curl);
+  gfserver_setopt(&gfs, GFS_WORKER_FUNC, handle_with_cache);
+  //create nsegments shared memory segments. Check return value
+  for (i = 0; i < nsegments; i++)
+  {
+	  shm_ret = shmget(i, size_segments, 0755 | IPC_CREAT);
+	  //shgmget returns -1 on failure
+	  if (shm_ret == -1)
+		  perror('shmget');
+	  else
+		  steque_push(QUEUE, i);
+  }
   for(i = 0; i < nworkerthreads; i++)
     gfserver_setopt(&gfs, GFS_WORKER_ARG, i, server);
 
