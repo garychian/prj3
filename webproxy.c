@@ -13,7 +13,8 @@
 
 #include "gfserver.h"
 
-steque_t * QUEUE;
+steque_t * QUEUE_SHM; //queue max len equal to number of shm segments
+steque_t * QUEUE_MES; //queue max len equal to number of webproxy threads
 //The following debug macros are directly from
 //http://c.learncodethehardway.org/book/ex20.html
 #ifdef NDEBUG
@@ -76,9 +77,16 @@ int main(int argc, char **argv) {
   unsigned short nworkerthreads = 1;
   char *server = "s3.amazonaws.com/content.udacity-data.com";
   CURLcode cg_init;
-  //Initialize queue
-  QUEUE = malloc(sizeof(steque_t));
-  steque_init(QUEUE);
+  int msg_key;
+  //Initialize queue  structures for message and shm
+  //QUEUE_SHM = malloc(sizeof(steque_t));
+  //QUEUE_MES = malloc(sizeof(steque_t));
+  //steque_init(QUEUE_SHM);
+  //steque_init(QUEUE_MES);
+  key_msgbuff msg_thread;
+  key_msgbuff msg_seg;
+  
+
 
   if (signal(SIGINT, _sig_handler) == SIG_ERR){
     fprintf(stderr,"Can't catch SIGINT...exiting.\n");
@@ -132,18 +140,35 @@ int main(int argc, char **argv) {
   gfserver_setopt(&gfs, GFS_PORT, port);
   gfserver_setopt(&gfs, GFS_MAXNPENDING, 10);
   gfserver_setopt(&gfs, GFS_WORKER_FUNC, handle_with_cache);
+  key_msgbuff_init(&msg_thread, nworkerthreads, MESSAGE_KEY);
+  key_msgbuff_init(&msg_seg, nsegments, SHM_KEY);
+
   //create nsegments shared memory segments. Check return value
-  for (i = 0; i < nsegments; i++)
+  for (msg_key = msg_seg.key_start; msg_key <= msg_seg.key_end; msg_key++)
   {
-	  shm_ret = shmget(i, size_segments, 0755 | IPC_CREAT);
+	  shm_ret = shmget(msg_key, size_segments, 0755 | IPC_CREAT);
 	  //shgmget returns -1 on failure
 	  if (shm_ret == -1)
 		  perror('shmget');
-	  else
-		  steque_push(QUEUE, i);
   }
-  for(i = 0; i < nworkerthreads; i++)
-    gfserver_setopt(&gfs, GFS_WORKER_ARG, i, server);
+  //create global message queue
+  msqid = msgget(MESSAGE_KEY, 0777 | IPC_CREAT);
+  //send info about segments shared memory
+  msgsnd(msqid, &msg_seg, key_msgbuff_sizeof(), 0);
+  //send info about thread message
+  msgsnd(msqid, &msg_thread, key_msgbuff_sizeof(), 0);
+  i = 0;
+  for(msg_key = msg_thread.key_start; msg_key < msg_thread.key_end; msg_key++)
+    //where optional argument is the thread specific message key id
+    //Its offset by 1 so as not to be confused with global message key 
+    gfserver_setopt(&gfs, GFS_WORKER_ARG, i, msg_key);
+    i++;
+    //msqid = msgget(msg_key, 0777 | IPC_CREAT);
+    //if (msqid == -1)
+    //  perror('msgget');
+    //else
+    //  steque_push(QUEUE_MES, i);
+
 
   /*Loops forever*/
   gfserver_serve(&gfs);

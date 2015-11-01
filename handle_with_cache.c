@@ -27,18 +27,20 @@ ssize_t handle_with_cache(gfcontext_t *ctx, char *path, void* arg){
 	char *data_dir = arg;
 	struct MemoryStruct data;
 	int msqid;
+	int msg_key;
 	msgbuf msg;
 	CURLcode curl_ret_code;
 
 	mem_struct_init(&data);
-	strcpy(buffer,data_dir);
-	strcat(buffer,path);
+	strcpy(buffer,path);
+	msg_key = (int *)arg;
+	//strcat(buffer,path);
 	msg.mtype = 2;
 	strcpy(msg.mtext, buffer);
 
 	fprintf(stdout, "cur_easy_perform.path = %s\n", buffer);
 	//Create ipc message queue. Check if msgget performed okay
-	msqid = msgget(MESSAGE_KEY, 0777 | IPC_CREAT);
+	msqid = msgget(msg_key, 0777 | IPC_CREAT);
 	if (msqid == -1)
 		perror("msgget: ");
 	//Add message struct to the queue

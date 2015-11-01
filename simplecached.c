@@ -13,6 +13,9 @@
 
 #define MAX_CACHE_REQUEST_LEN 256
 
+steque_t * QUEUE_SHM; //queue max len equal to number of shm segments
+steque_t * QUEUE_MES; //queue max len equal to number of webproxy threads
+
 static void _sig_handler(int signo){
 	if (signo == SIGINT || signo == SIGTERM){
 		/* Unlink IPC mechanisms here*/
@@ -45,9 +48,11 @@ int main(int argc, char **argv) {
 	int i;
 	char *cachedir = "locals.txt";
 	char option_char;
-	int msqid;
+	int msqid, msgqid_glob;
 	struct msgbuf msg;
 	int *thread_id_list;
+	key_msgbuff msg_thread;
+	key_msgbuff msg_seg;
 
 	while ((option_char = getopt_long(argc, argv, "t:c:h", gLongOptions, NULL)) != -1) {
 		switch (option_char) {
@@ -90,8 +95,42 @@ int main(int argc, char **argv) {
 		  thread_id_list[ii] = ii;
 		  pthread_create(&thread_list[ii], NULL, (void *)&sc_worker, (void *)&thread_id_list[ii]);
 	  }
-	msgrcv(msqid, &msg, sizeof(msgbuf) - sizeof(long), 0, 0);
-	printf("message from ipc: %s", msg.mtext);
+	// get shared memory and message queue info
+    msgrcv(msqid, &msg_seg, key_msgbuff_sizeof(), 0, 0);
+    msgrcv(msqid, &msg_thread, key_msgbuff_sizeof(), 0, 0);
+	printf("message about shm ipc: key_count = %d, key_start = %d, key_end = %d", msg_seg.key_count, msg_seg.key_start, msg_key.key_end);
+	printf("message about message queue ipc: key_count = %d, key_start = %d, key_end = %d", msg_thread.key_count, msg_thread.key_start, msg_thread.key_end);
+
+	//create queues of shm keyid
+  //Initialize queue  structures for message and shm
+    QUEUE_SHM = malloc(sizeof(steque_t));
+    QUEUE_MES = malloc(sizeof(steque_t));
+    steque_init(QUEUE_SHM);
+    steque_init(QUEUE_MES);
+    //Add the shared memory keys to a queue
+    for (int ii = msg_seg.key_start; ii <= msg_seg.key_end; i++)
+    {
+    	steque_push(QUEUE_SHM, ii);
+    }
+    //add the message keys to a queue
+    for (int ii = msg_thread.key_start; ii <= msg_thread.key_end; i++)
+    {
+    	steque_push(QUEUE_MES, ii);
+    }
+
+	//start pulling from master message queue
+	while (1)
+	{
+		msgrcv(msqid, &msg_thread, key_msgbuff_sizeof(), 0, 0);
+	}
+	//an item in master queue will request a path, and message_keyid which will be listening on
+	//check if path in cahce.
+	//if path in cache. aquire lock and aquire shm_keyid (queue of shm keyid is unused keys0)
+	//write to shared memory (fpath, tot_size, written_size). 
+	//if file fits in buffer message compltion_status = 1 (finished), 0 (keep reading), -1 (error)
+	//wait for read receipt = 1 (finished0) else error
+	//repeat until message a completio_status = 1
+	//wait for 
 
 }
 
