@@ -15,6 +15,7 @@
 
 steque_t * QUEUE_SHM; //queue max len equal to number of shm segments
 steque_t * QUEUE_MES; //queue max len equal to number of webproxy threads
+pthread_mutex_t MUTEX_SHM;
 
 static void _sig_handler(int signo){
 	if (signo == SIGINT || signo == SIGTERM){
@@ -51,8 +52,13 @@ int main(int argc, char **argv) {
 	int msqid, msgqid_glob;
 	struct msgbuf msg;
 	int *thread_id_list;
-	key_msgbuff msg_thread;
+	int m_check;
+	//key_msgbuff msg_thread;
 	key_msgbuff msg_seg;
+
+	m_check = pthread_mutex_init(&MUTEX_SHM, NULL);
+	if (m_check != 0)
+		perror("pthread_mutexattr_setpshared");
 
 	while ((option_char = getopt_long(argc, argv, "t:c:h", gLongOptions, NULL)) != -1) {
 		switch (option_char) {
@@ -97,9 +103,9 @@ int main(int argc, char **argv) {
 	  }
 	// get shared memory and message queue info
     msgrcv(msqid, &msg_seg, key_msgbuff_sizeof(), 0, 0);
-    msgrcv(msqid, &msg_thread, key_msgbuff_sizeof(), 0, 0);
-	printf("message about shm ipc: key_count = %d, key_start = %d, key_end = %d", msg_seg.key_count, msg_seg.key_start, msg_key.key_end);
-	printf("message about message queue ipc: key_count = %d, key_start = %d, key_end = %d", msg_thread.key_count, msg_thread.key_start, msg_thread.key_end);
+    //msgrcv(msqid, &msg_thread, key_msgbuff_sizeof(), 0, 0);
+	printf("message about shm ipc: key_count = %d, key_start = %d, key_end = %d", msg_seg.key_count, msg_seg.key_start, msg_seg.key_end);
+	//printf("message about message queue ipc: key_count = %d, key_start = %d, key_end = %d", msg_thread.key_count, msg_thread.key_start, msg_thread.key_end);
 
 	//create queues of shm keyid
   //Initialize queue  structures for message and shm
@@ -113,15 +119,16 @@ int main(int argc, char **argv) {
     	steque_push(QUEUE_SHM, ii);
     }
     //add the message keys to a queue
-    for (int ii = msg_thread.key_start; ii <= msg_thread.key_end; i++)
-    {
-    	steque_push(QUEUE_MES, ii);
-    }
+    //for (int ii = msg_thread.key_start; ii <= msg_thread.key_end; i++)
+    //{
+    //	steque_push(QUEUE_MES, ii);
+    //}
 
 	//start pulling from master message queue
 	while (1)
 	{
-		msgrcv(msqid, &msg_thread, key_msgbuff_sizeof(), 0, 0);
+		msgrcv(msqid, &msg_thread, char_msgbuff_sizeof(), 0, 0);
+		msg_thread
 	}
 	//an item in master queue will request a path, and message_keyid which will be listening on
 	//check if path in cahce.
@@ -135,7 +142,7 @@ int main(int argc, char **argv) {
 }
 
 
-void sc_worker(void *thread_id){
+void sc_worker(void * path, void *seg_size){
 	/*
 	 *Synopsis*
 	 client_worker is dependent on the global queue object.
@@ -151,6 +158,45 @@ void sc_worker(void *thread_id){
 	void
 
 	 */
+	int shm_key;
+	int fd;
+	pthread_mutex_lock(&MUTEX_SHM);
+		shm_key = steque_pop(QUEUE_SHM);
+	pthread_mutex_unlock(&MUTEX_SHM);
+
+	fd = simplecahce_get((char *)path);
+	shm_ret = shmget(shm_key, (size_t *)seg_size, 0755 | IPC_CREAT);
+	//shgmget returns -1 on failure
+	if (shm_ret == -1)
+	  perror("shmget");
+	shm_data_p = (shm_data_t *)shmat(shm_ret, (void *)0, 0);
+
+	//fd == -1 means couldnt be found in cache. Return FILENOTFOUND
+	if (fd == -1)
+	{
+
+	}
+	else
+	{
+		//get filesize
+		fseek(fd, 0L, SEEK_END);
+		shm_data_p->fsize = ftell(fd);
+		//read contents and send
+	    while (1)
+	    {
+	    	shm_data_p->data_size = read(fd, (void *)shm_data_p->data, shm_data_p->allwd_data_size);
+			 = bytes_read;
+			fprintf(stdout, "sc_worker: number of bytes read %d\n", bytes_read);
+			if (shm_data_p->data_size == 0)
+			{
+				break;
+			}
+			else if (shm_data_p->data_size == -1)
+			{
+				perror("Error reading file");
+			}
+	    }
+	}
 	while (1){
 		pthread_mutex_lock(&m);
 			//if all jobs have been completed, break (instead

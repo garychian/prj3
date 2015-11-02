@@ -10,7 +10,7 @@
 #include <sys/ipc.h>
 #include <sys/shm.h>
 #include "steque.h"
-
+#include "shm_channel.h"
 #include "gfserver.h"
 
 steque_t * QUEUE_SHM; //queue max len equal to number of shm segments
@@ -77,7 +77,9 @@ int main(int argc, char **argv) {
   unsigned short nworkerthreads = 1;
   char *server = "s3.amazonaws.com/content.udacity-data.com";
   CURLcode cg_init;
-  int msg_key;
+  int msg_key, msqid;
+  shm_data_t *shm_data_p;
+
   //Initialize queue  structures for message and shm
   //QUEUE_SHM = malloc(sizeof(steque_t));
   //QUEUE_MES = malloc(sizeof(steque_t));
@@ -140,23 +142,29 @@ int main(int argc, char **argv) {
   gfserver_setopt(&gfs, GFS_PORT, port);
   gfserver_setopt(&gfs, GFS_MAXNPENDING, 10);
   gfserver_setopt(&gfs, GFS_WORKER_FUNC, handle_with_cache);
-  key_msgbuff_init(&msg_thread, nworkerthreads, MESSAGE_KEY);
-  key_msgbuff_init(&msg_seg, nsegments, SHM_KEY);
+  key_msgbuff_init(&msg_thread, 0, nworkerthreads, MESSAGE_KEY);
+  key_msgbuff_init(&msg_seg, size_segments, nsegments, SHM_KEY);
 
   //create nsegments shared memory segments. Check return value
   for (msg_key = msg_seg.key_start; msg_key <= msg_seg.key_end; msg_key++)
   {
-	  shm_ret = shmget(msg_key, size_segments, 0755 | IPC_CREAT);
+	  shm_ret = shmget(msg_key, msg_seg.size_seg, 0755 | IPC_CREAT);
 	  //shgmget returns -1 on failure
 	  if (shm_ret == -1)
-		  perror('shmget');
+		  perror("shmget");
+	  shm_data_p = (shm_data_t *)shmat(shm_ret, (void *)0, 0);
+	  if (data == (shm_data_t *-1))
+		  perror("shm_data_p");
+	  //initialize data constructs (mutexes, size calculations, etc)
+	  shm_data_init(shm_data_p, size_segments);
+
   }
   //create global message queue
   msqid = msgget(MESSAGE_KEY, 0777 | IPC_CREAT);
   //send info about segments shared memory
   msgsnd(msqid, &msg_seg, key_msgbuff_sizeof(), 0);
   //send info about thread message
-  msgsnd(msqid, &msg_thread, key_msgbuff_sizeof(), 0);
+  //msgsnd(msqid, &msg_thread, key_msgbuff_sizeof(), 0);
   i = 0;
   for(msg_key = msg_thread.key_start; msg_key < msg_thread.key_end; msg_key++)
     //where optional argument is the thread specific message key id
