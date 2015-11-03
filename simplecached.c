@@ -55,6 +55,7 @@ int main(int argc, char **argv) {
 	int m_check;
 	//key_msgbuff msg_thread;
 	key_msgbuff msg_seg;
+	char_msgbuf * thread_args;
 
 	m_check = pthread_mutex_init(&MUTEX_SHM, NULL);
 	if (m_check != 0)
@@ -78,6 +79,7 @@ int main(int argc, char **argv) {
 		}
 	}
 
+	thread_args = (char_msgbuf *)malloc(nthreads * sizeof(char_msgbuf));
 	if (signal(SIGINT, _sig_handler) == SIG_ERR){
 		fprintf(stderr,"Can't catch SIGINT...exiting.\n");
 		exit(EXIT_FAILURE);
@@ -124,10 +126,16 @@ int main(int argc, char **argv) {
     //	steque_push(QUEUE_MES, ii);
     //}
 
+    for (ii = 0; ii < nthreads; i++)
+    {
+    	pthread_create(ii, NULL, (void *)&sc_worker, (void *)(thread_args + ii))
+    }
 	//start pulling from master message queue
 	while (1)
 	{
 		msgrcv(msqid, &msg_thread, char_msgbuff_sizeof(), 0, 0);
+		
+
 		msg_thread
 	}
 	//an item in master queue will request a path, and message_keyid which will be listening on
@@ -142,7 +150,8 @@ int main(int argc, char **argv) {
 }
 
 
-void sc_worker(void * path, void *seg_size){
+void sc_worker(void * path, void *seg_size)
+{
 	/*
 	 *Synopsis*
 	 client_worker is dependent on the global queue object.
@@ -185,8 +194,8 @@ void sc_worker(void * path, void *seg_size){
 	    while (1)
 	    {
 	    	shm_data_p->data_size = read(fd, (void *)shm_data_p->data, shm_data_p->allwd_data_size);
-			 = bytes_read;
-			fprintf(stdout, "sc_worker: number of bytes read %d\n", bytes_read);
+
+			fprintf(stdout, "sc_worker: number of bytes read %d\n", &shm_data_p->data_size);
 			if (shm_data_p->data_size == 0)
 			{
 				break;
@@ -195,46 +204,14 @@ void sc_worker(void * path, void *seg_size){
 			{
 				perror("Error reading file");
 			}
+			//signal reader that read can conditnue
+			pthread_cond_signal(&shm_data_p->cond_read)
+			//when reader signals cond_write then write can continue
+			pthread_cond_wait(&shm_data_p->cond_write);
 	    }
 	}
-	while (1){
-		pthread_mutex_lock(&m);
-			//if all jobs have been completed, break (instead
-			//of blocking infinitely for a queue that won't populate.
-			if (jobs_completed < tot_jobs){
-				//wait while steque_isempty
-				while (steque_isempty(queue) != 0){
-					pthread_cond_wait(&c_cons, &m);
-				}
-			}
-			else{
-				pthread_mutex_unlock(&m);
-				break;
-			}
-			job *job_to_exec = (job *)steque_pop(queue);
-			jobs_completed++;
-			printf("local_path = %s\n", job_to_exec->local_path);
-		pthread_mutex_unlock(&m);
-
-		int returncode = gfc_perform(job_to_exec->gfr);
-		if ( returncode < 0){
-		  fprintf(stdout, "gfc_perform returned an error %d\n", returncode);
-		  fclose(job_to_exec->file);
-		  if ( 0 > unlink(job_to_exec->local_path))
-			fprintf(stderr, "unlink failed on %s\n", job_to_exec->local_path);
-		}
-		else {
-			fclose(job_to_exec->file);
-		}
-
-		if ( gfc_get_status(job_to_exec->gfr) != GF_OK){
-		  if ( 0 > unlink(job_to_exec->local_path))
-			fprintf(stderr, "unlink failed on %s\n", job_to_exec->local_path);
-		}
-		fprintf(stdout, "Status: %s\n", gfc_strstatus(gfc_get_status(job_to_exec->gfr)));
-		fprintf(stdout, "Received %zu of %zu bytes\n", gfc_get_bytesreceived(job_to_exec->gfr), gfc_get_filelen(job_to_exec->gfr));
-
-		free(job_to_exec->gfr);
-		free(job_to_exec);
+	pthread_mutex_lock(&MUTEX_SHM);
+		steque_push(QUEUE_SHM, ii);
+	pthread_mutex_unlock(&MUTEX_SHM);
 	}
 }

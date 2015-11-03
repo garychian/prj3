@@ -40,7 +40,7 @@ ssize_t handle_with_cache(gfcontext_t *ctx, char *path, void* arg)
 	strcpy(buffer,path);
 	//strcat(buffer,path);
 	msg.mtype = 2;
-	strcpy(msg.mtext, buffer);
+	strcpy(msg.mtext, buffer); //mtext is the path
 	msg.mkey = (int *)arg;
 
 	fprintf(stdout, "cur_easy_perform.path = %s\n", buffer);
@@ -78,7 +78,12 @@ ssize_t handle_with_cache(gfcontext_t *ctx, char *path, void* arg)
 		while(1)
 		{
 			pthread_mutex_lock(&(pthread_shm_data_p->mutex));
-				write_memory_cb((void *)shm_data_p, shm_data_p->data_size, 1, (void *)data);
+				//wait for reader to be signaled from writer
+				pthread_cond_wait(&shm_data_p->cond_read);				
+				//write shm_data_p->data to data
+				write_memory_cb((void *)shm_data_p->data, shm_data_p->data_size, 1, (void *)data);
+				//signal write that write can conditnue
+				pthread_cond_signal(&shm_data_p->cond_write)
 			pthread_mutex_unlock(&(pthread_shm_data_p->mutex));
 			//when size of local data == size of file break for loop
 			if (data->size == shm_data_p->fsize)
