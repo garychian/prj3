@@ -10,13 +10,13 @@
 #include <sys/msg.h>
 #include "shm_channel.h"
 #include "simplecache.h"
-
+#include "steque.h"
 #define MAX_CACHE_REQUEST_LEN 256
 
 steque_t * QUEUE_SHM; //queue max len equal to number of shm segments
 steque_t * QUEUE_MES; //queue max len equal to number of webproxy threads
 pthread_mutex_t MUTEX_SHM;
-
+void sc_worker();
 static void _sig_handler(int signo){
 	if (signo == SIGINT || signo == SIGTERM){
 		/* Unlink IPC mechanisms here*/
@@ -47,10 +47,10 @@ void Usage() {
 int main(int argc, char **argv) {
 	int nthreads = 1;
 	int i;
+	int ii;
 	char *cachedir = "locals.txt";
 	char option_char;
 	int msqid, msgqid_glob;
-	struct msgbuf msg;
 	int *thread_id_list;
 	int m_check;
 	//key_msgbuff msg_thread;
@@ -118,7 +118,7 @@ int main(int argc, char **argv) {
     //Add the shared memory keys to a queue
     for (int ii = msg_seg.key_start; ii <= msg_seg.key_end; i++)
     {
-    	steque_push(QUEUE_SHM, ii);
+    	steque_push(QUEUE_SHM, &ii);
     }
     //add the message keys to a queue
     //for (int ii = msg_thread.key_start; ii <= msg_thread.key_end; i++)
@@ -128,16 +128,10 @@ int main(int argc, char **argv) {
 
     for (ii = 0; ii < nthreads; i++)
     {
-    	pthread_create(ii, NULL, (void *)&sc_worker, (void *)(thread_args + ii))
+    	pthread_create(ii, NULL, (void *)&sc_worker, NULL);
     }
 	//start pulling from master message queue
-	while (1)
-	{
-		msgrcv(msqid, &msg_thread, char_msgbuff_sizeof(), 0, 0);
-		
 
-		msg_thread
-	}
 	//an item in master queue will request a path, and message_keyid which will be listening on
 	//check if path in cahce.
 	//if path in cache. aquire lock and aquire shm_keyid (queue of shm keyid is unused keys0)
@@ -150,7 +144,7 @@ int main(int argc, char **argv) {
 }
 
 
-void sc_worker(void * path, void *seg_size)
+void sc_worker()
 {
 	/*
 	 *Synopsis*
@@ -167,51 +161,73 @@ void sc_worker(void * path, void *seg_size)
 	void
 
 	 */
-	int shm_key;
+	key_t shm_key;
 	int fd;
-	pthread_mutex_lock(&MUTEX_SHM);
-		shm_key = steque_pop(QUEUE_SHM);
-	pthread_mutex_unlock(&MUTEX_SHM);
-
-	fd = simplecahce_get((char *)path);
-	shm_ret = shmget(shm_key, (size_t *)seg_size, 0755 | IPC_CREAT);
-	//shgmget returns -1 on failure
-	if (shm_ret == -1)
-	  perror("shmget");
-	shm_data_p = (shm_data_t *)shmat(shm_ret, (void *)0, 0);
-
-	//fd == -1 means couldnt be found in cache. Return FILENOTFOUND
-	if (fd == -1)
+	int msqid;
+	int ii;
+	int shm_ret;
+	shm_data_t * shm_data_p;
+	char_msgbuf msg_thread;
+	//create global message queue within thread
+	msqid = msgget(MESSAGE_KEY, 0777 | IPC_CREAT);
+	while(1)
 	{
+		//grab mutex to read from queue and grab a shm resource
+		pthread_mutex_lock(&MUTEX_SHM);
+			msgrcv(msqid, &msg_thread, char_msgbuff_sizeof(), 0, 0);
+			shm_key = steque_pop(QUEUE_SHM);
+		pthread_mutex_unlock(&MUTEX_SHM);
 
-	}
-	else
-	{
-		//get filesize
-		fseek(fd, 0L, SEEK_END);
-		shm_data_p->fsize = ftell(fd);
-		//read contents and send
-	    while (1)
-	    {
-	    	shm_data_p->data_size = read(fd, (void *)shm_data_p->data, shm_data_p->allwd_data_size);
 
-			fprintf(stdout, "sc_worker: number of bytes read %d\n", &shm_data_p->data_size);
-			if (shm_data_p->data_size == 0)
-			{
-				break;
-			}
-			else if (shm_data_p->data_size == -1)
-			{
-				perror("Error reading file");
-			}
-			//signal reader that read can conditnue
-			pthread_cond_signal(&shm_data_p->cond_read)
+		shm_ret = shmget(shm_key, msg_thread.size_seg, 0755 | IPC_CREAT);
+		//shgmget returns -1 on failure
+		if (shm_ret == -1)
+		  perror("shmget");
+		shm_data_p = (shm_data_t *)shmat(shm_ret, (void *)0, 0);
+		//clean out shared memory
+		shm_data_clean(shm_data_p);
+		//get file descriptor frame cache. Returns -1 if not in cache
+		fd = simplecache_get((char *)msg_thread.mtext);
+		if (fd == -1)
+		{
+			//sending unitialized structure (with fexist = 0) will
+			//indicate no file found. Signal awake readers
+			pthread_cond_signal(&shm_data_p->cond_read);
 			//when reader signals cond_write then write can continue
-			pthread_cond_wait(&shm_data_p->cond_write);
-	    }
-	}
-	pthread_mutex_lock(&MUTEX_SHM);
-		steque_push(QUEUE_SHM, ii);
-	pthread_mutex_unlock(&MUTEX_SHM);
+			pthread_cond_wait(&shm_data_p->cond_write, &shm_data_p->mutex);
+		}
+		else
+		{
+			shm_data_p->fexist = 1;
+			//get filesize
+
+			shm_data_p->fsize = lseek(fd, 0L, SEEK_END);
+			//read contents and send
+			while (1)
+			{
+				//try and read a block as large as allowed data size. Set data_size to amount read
+				shm_data_p->data_size = read(fd, (void *)shm_data_p->data, shm_data_p->allwd_data_size);
+
+				fprintf(stdout, "sc_worker: number of bytes read %d\n", &shm_data_p->data_size);
+
+				if (shm_data_p->data_size == -1)
+				{
+					perror("Error reading file");
+					shm_data_p->fexist = -1;
+				}
+				else
+				{
+					//signal reader that read can conditnue
+					pthread_cond_signal(&shm_data_p->cond_read);
+					//when reader signals cond_write then write can continue
+					pthread_cond_wait(&shm_data_p->cond_write, &shm_data_p->mutex);
+					if (shm_data_p->data_size == 0)
+						break;
+				}
+			}
+		}
+		pthread_mutex_lock(&MUTEX_SHM);
+			steque_push(QUEUE_SHM, shm_key);
+		pthread_mutex_unlock(&MUTEX_SHM);
 	}
 }

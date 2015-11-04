@@ -9,6 +9,7 @@
 #include <curl/curl.h>
 #include <sys/ipc.h>
 #include <sys/shm.h>
+#include <sys/msg.h>
 #include "steque.h"
 #include "shm_channel.h"
 #include "gfserver.h"
@@ -153,7 +154,7 @@ int main(int argc, char **argv) {
 	  if (shm_ret == -1)
 		  perror("shmget");
 	  shm_data_p = (shm_data_t *)shmat(shm_ret, (void *)0, 0);
-	  if (data == (shm_data_t *-1))
+	  if (shm_data_p == (shm_data_t *)-1)
 		  perror("shm_data_p");
 	  //initialize data constructs (mutexes, size calculations, etc)
 	  shm_data_init(shm_data_p, size_segments);

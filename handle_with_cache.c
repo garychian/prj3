@@ -32,9 +32,9 @@ ssize_t handle_with_cache(gfcontext_t *ctx, char *path, void* arg)
 	int msgq_thd;
 	int msg_key;
 	int msgsend_ret;
+	key_t shm_ret;
 	char_msgbuf msg;
-	struct MemoryStruct * data;
-	mem_struct_init(&data);
+	shm_data_t *shm_data_p;
 
 	mem_struct_init(&data);
 	strcpy(buffer,path);
@@ -73,29 +73,36 @@ ssize_t handle_with_cache(gfcontext_t *ctx, char *path, void* arg)
 		if (shm_ret == -1)
 			perror("shmget");
 		shm_data_p = (shm_data_t *)shmat(shm_ret, (void *)0, 0);
-		if (data == (shm_data_t *-1))
+		if (&data == (shm_data_t *)-1)
 			perror("shm_data_p");
 		while(1)
 		{
-			pthread_mutex_lock(&(pthread_shm_data_p->mutex));
+			pthread_mutex_lock(&shm_data_p->mutex);
 				//wait for reader to be signaled from writer
-				pthread_cond_wait(&shm_data_p->cond_read);				
+				pthread_cond_wait(&shm_data_p->cond_read, &shm_data_p->mutex);
 				//write shm_data_p->data to data
-				write_memory_cb((void *)shm_data_p->data, shm_data_p->data_size, 1, (void *)data);
+				write_memory_cb((void *)shm_data_p->data, shm_data_p->data_size, 1, (void *)&data);
 				//signal write that write can conditnue
-				pthread_cond_signal(&shm_data_p->cond_write)
-			pthread_mutex_unlock(&(pthread_shm_data_p->mutex));
+				pthread_cond_signal(&shm_data_p->cond_write);
+				//examine fexist attribute of struct.
+				if(shm_data_p->fexist == 0)
+					return gfs_sendheader(ctx, GF_FILE_NOT_FOUND, 0);
+				else if (shm_data_p->fexist == -1)
+					return EXIT_FAILURE;
+
+			pthread_mutex_unlock(&shm_data_p->mutex);
 			//when size of local data == size of file break for loop
-			if (data->size == shm_data_p->fsize)
-				break;
+			if (data.size == shm_data_p->fsize)
+			{
+				gfs_sendheader(ctx, GF_OK, data.size);
+				/* Sending the file contents chunk by chunk. */
+				int ret_sc = send_contents(ctx, &data);
+				if (ret_sc == 0)
+					return data.size;
+				else
+					return EXIT_FAILURE;
+			}
 		}
-		gfs_sendheader(ctx, GF_OK, data.size);
-		/* Sending the file contents chunk by chunk. */
-		int ret_sc = send_contents(ctx, &data);
-		if (ret_sc == 0)
-			return data.size;
-		else
-			return EXIT_FAILURE;
 	}
 }
 int send_contents(gfcontext_t *ctx, struct MemoryStruct * data)
