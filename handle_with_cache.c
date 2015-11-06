@@ -30,7 +30,6 @@ ssize_t handle_with_cache(gfcontext_t *ctx, char *path, void* arg)
 	struct MemoryStruct data;
 	int msgq_glob;
 	int msgq_thd;
-	int msg_key;
 	int msgsend_ret;
 	key_t shm_ret;
 	char_msgbuf msg;
@@ -38,19 +37,20 @@ ssize_t handle_with_cache(gfcontext_t *ctx, char *path, void* arg)
 
 	mem_struct_init(&data);
 	strcpy(buffer,path);
-	//strcat(buffer,path);
 	msg.mtype = 2;
 	strcpy(msg.mtext, buffer); //mtext is the path
-	msg.mkey = (int *)arg;
+	msg.mkey = (key_t)(*arg);
 
 	fprintf(stdout, "cur_easy_perform.path = %s\n", buffer);
 	//Create global message queue. Check if msgget performed okay
 	msgq_glob = msgget(MESSAGE_KEY, 0777 | IPC_CREAT);
 	if (msgq_glob == -1)
 		perror("msgget");
-	msgq_thd = msgget(msg_key, 0777 | IPC_CREAT);
+	//create thread specific queueu
+	msgq_thd = msgget(msg.mkey, 0777 | IPC_CREAT);
 	if (msgq_thd == -1)
 		perror("msgget");
+
 	//Add message struct (path to query) to the queue
 	msgsend_ret = msgsnd(msgq_glob, &msg, char_msgbuff_sizeof(), 0);
 	if (msgsend_ret != 0)
@@ -58,8 +58,8 @@ ssize_t handle_with_cache(gfcontext_t *ctx, char *path, void* arg)
 
 	//wait on msgrcv. Upon rcv wil know if file exists and what
 	//shm data struct to access.
-
 	msgsend_ret = msgrcv(msgq_glob, &msg, char_msgbuff_sizeof(), 0, 0);
+
 	//if char_msgbuf.shmkey is = 0 (default) then cache file did not exist
 	//according to doc this should retun GF_FILE_NOT_FOUND
 	if (msgsend_ret == -1)

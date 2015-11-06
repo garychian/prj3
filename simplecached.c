@@ -48,18 +48,16 @@ int main(int argc, char **argv) {
 	int nthreads = 1;
 	int i;
 	int ii;
-	char *cachedir = "locals.txt";
-	char option_char;
-	int msqid, msgqid_glob;
+	int msqid
+	int msgqid_glob;
 	int *thread_id_list;
-	int m_check;
+	
+	char option_char;
+	char *cachedir = "locals.txt";
+
 	//key_msgbuff msg_thread;
 	key_msgbuff msg_seg;
 	char_msgbuf * thread_args;
-
-	m_check = pthread_mutex_init(&MUTEX_SHM, NULL);
-	if (m_check != 0)
-		perror("pthread_mutexattr_setpshared");
 
 	while ((option_char = getopt_long(argc, argv, "t:c:h", gLongOptions, NULL)) != -1) {
 		switch (option_char) {
@@ -176,6 +174,7 @@ void sc_worker()
 		pthread_mutex_lock(&MUTEX_SHM);
 			msgrcv(msqid, &msg_thread, char_msgbuff_sizeof(), 0, 0);
 			shm_key = steque_pop(QUEUE_SHM);
+			msg_thread.shmkey = shm_key
 		pthread_mutex_unlock(&MUTEX_SHM);
 
 
@@ -188,6 +187,8 @@ void sc_worker()
 		shm_data_clean(shm_data_p);
 		//get file descriptor frame cache. Returns -1 if not in cache
 		fd = simplecache_get((char *)msg_thread.mtext);
+		//send over thread message queue char_msg_buff with shm_key
+		msgsend_ret = msgsnd(msg_thread.mkey, &msg, char_msgbuff_sizeof(), 0);
 		if (fd == -1)
 		{
 			//sending unitialized structure (with fexist = 0) will
