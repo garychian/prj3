@@ -72,6 +72,7 @@ int main(int argc, char **argv) {
 		}
 	}
 
+	thread_args = (char_msgbuf *)malloc(nthreads * sizeof(char_msgbuf));
 	if (signal(SIGINT, _sig_handler) == SIG_ERR){
 		fprintf(stderr,"Can't catch SIGINT...exiting.\n");
 		exit(EXIT_FAILURE);

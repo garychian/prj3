@@ -82,6 +82,7 @@ int main(int argc, char **argv) {
   key_msgbuff msg_thread;
   key_msgbuff msg_seg;
 
+
   if (signal(SIGINT, _sig_handler) == SIG_ERR){
     fprintf(stderr,"Can't catch SIGINT...exiting.\n");
     exit(EXIT_FAILURE);
@@ -162,6 +163,7 @@ int main(int argc, char **argv) {
     gfserver_setopt(&gfs, GFS_WORKER_ARG, i, msg_key);
     i++;
   }
+
 
   /*Loops forever*/
   gfserver_serve(&gfs);

@@ -7,6 +7,7 @@
 #include <sys/msg.h>
 #include <sys/shm.h>
 
+
 #include "shm_channel.h"
 
 #include "gfserver.h"
@@ -57,6 +58,7 @@ ssize_t handle_with_cache(gfcontext_t *ctx, char *path, void* arg)
 	//wait on msgrcv. Upon rcv wil know if file exists and what
 	//shm data struct to access.
 	msgsend_ret = msgrcv(msgq_glob, &msg, char_msgbuff_sizeof(), 0, 0);
+
 
 	//if char_msgbuf.shmkey is = 0 (default) then cache file did not exist
 	//according to doc this should retun GF_FILE_NOT_FOUND

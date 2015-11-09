@@ -2,6 +2,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <stdio.h>
+
 #include "shm_channel.h"
 
 size_t char_msgbuff_sizeof()
@@ -9,6 +10,7 @@ size_t char_msgbuff_sizeof()
 	//size of message to be sent is size of struct minus long field
 	return sizeof(char_msgbuff_sizeof) - sizeof(long);
 }
+<<<<<<< HEAD
 void char_msgbuf_init(char_msgbuf *self, char *mtext, key_t mkey, key_t shmkey, size_t size_seg)
 {
 	self->mtype = CHAR_MTYPE;
@@ -24,6 +26,7 @@ int key_msgbuff_sizeof()
 	//size of message to be sent is size of struct minus long field
 	return sizeof(key_msgbuff) - sizeof(long);
 }
+
 
 void key_msgbuff_init(key_msgbuff *self, size_t size_seg, int key_count, int key_start)
 {
