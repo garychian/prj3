@@ -25,9 +25,9 @@ typedef struct char_msgbuf {
     key_t shmkey;
     size_t size_seg;
 }char_msgbuf;
-
+void char_msgbuf_prnt(char_msgbuf *self);
 //0 sets contained attributes
-void char_msgbuf_init(char_msgbuf *self);
+void char_msgbuf_init(char_msgbuf *self, char *mtext, key_t mkey, key_t shmkey, size_t size_seg);
 
 //Returns the sizeof the char_msgbuf struct (minus the long)
 size_t char_msgbuff_sizeof();

@@ -39,7 +39,7 @@ ssize_t handle_with_cache(gfcontext_t *ctx, char *path, void* arg)
 	mem_struct_init(&data);
 	//initializing mtext (file path), mkey (final arg from handle with cache), shmkey (set to 0 initially), size_seg (set to 0 initally)
 	char_msgbuf_init(&msg, path, *(key_t *)(arg), 0, 0);
-
+	void char_msgbuf_prnt(&msg);
 	fprintf(stdout, "cur_easy_perform.path = %s\n", buffer);
 	//Create global message queue. Check if msgget performed okay
 	msgq_glob = msgget(MESSAGE_KEY, 0777 | IPC_CREAT);

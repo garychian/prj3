@@ -10,7 +10,14 @@ size_t char_msgbuff_sizeof()
 	//size of message to be sent is size of struct minus long field
 	return sizeof(char_msgbuff_sizeof) - sizeof(long);
 }
-<<<<<<< HEAD
+
+void char_msgbuf_prnt(char_msgbuf *self)
+{
+	printf("mtext = %s\n", self->mtext);
+	printf("mkey = %s\n", self->mkey);
+	printf("shmkey = %s\n", self->shmkey);
+	printf("size_seg = %s\n", self->size_seg);
+}
 void char_msgbuf_init(char_msgbuf *self, char *mtext, key_t mkey, key_t shmkey, size_t size_seg)
 {
 	self->mtype = CHAR_MTYPE;
