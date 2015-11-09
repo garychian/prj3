@@ -36,10 +36,8 @@ ssize_t handle_with_cache(gfcontext_t *ctx, char *path, void* arg)
 	shm_data_t *shm_data_p;
 
 	mem_struct_init(&data);
-	strcpy(buffer,path);
-	msg.mtype = 2;
-	strcpy(msg.mtext, buffer); //mtext is the path
-	msg.mkey = *(key_t *)(arg);
+	//initializing mtext (file path), mkey (final arg from handle with cache), shmkey (set to 0 initially), size_seg (set to 0 initally)
+	char_msgbuf_init(&msg, path, *(key_t *)(arg), 0, 0);
 
 	fprintf(stdout, "cur_easy_perform.path = %s\n", buffer);
 	//Create global message queue. Check if msgget performed okay

@@ -5,6 +5,8 @@
 #define BUFFER_LEN 4096
 #define SHM_KEY 66666
 #define MESSAGE_KEY 9999
+#define CHAR_MTYPE 1
+#define KEY_MYTPE 2
 
 typedef struct char_msgbuf {
 	/*

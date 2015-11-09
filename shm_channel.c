@@ -9,13 +9,14 @@ size_t char_msgbuff_sizeof()
 	//size of message to be sent is size of struct minus long field
 	return sizeof(char_msgbuff_sizeof) - sizeof(long);
 }
-void char_msgbuf_init(char_msgbuf *self)
+void char_msgbuf_init(char_msgbuf *self, char *mtext, key_t mkey, key_t shmkey, size_t size_seg)
 {
-	self->mtype = 1;
+	self->mtype = CHAR_MTYPE;
 	memset(self->mtext, 0, BUFFER_LEN);
-	self->mkey = 0;
-	self->shmkey = 0;
-	self->size_seg = 0;
+	strcpy(self->mtext, mtext);
+	self->mkey = mkey;
+	self->shmkey = shmkey;
+	self->size_seg = size_seg;
 }
 
 int key_msgbuff_sizeof()
@@ -27,6 +28,7 @@ int key_msgbuff_sizeof()
 void key_msgbuff_init(key_msgbuff *self, size_t size_seg, int key_count, int key_start)
 {
 	//initizles struct with total number of elements
+	self->mtype = KEY_MYTPE;
 	self->size_seg = size_seg;
 	self->key_count = key_count;
 	self->key_start = key_start;

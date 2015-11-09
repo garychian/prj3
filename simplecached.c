@@ -46,7 +46,6 @@ void Usage() {
 
 int main(int argc, char **argv) {
 	int nthreads = 1;
-	int i;
 	int ii;
 	int msqid;
 	int *thread_id_list;
@@ -82,6 +81,17 @@ int main(int argc, char **argv) {
 		fprintf(stderr,"Can't catch SIGTERM...exiting.\n");
 		exit(EXIT_FAILURE);
 	}
+	//Allocate thread pool
+	thread_list = (pthread_t *)malloc(nthreads * sizeof(pthread_t));
+	if (thread_list == (pthread_t *) NULL)
+		perror("thread_list: malloc");
+	thread_id_list = (int *)malloc(nthreads * sizeof(int));
+	if (thread_id_list == (int *) NULL)
+		perror("thread_id_list: malloc");
+
+    //Initialize queue  structures for message and shm
+    QUEUE_SHM = malloc(sizeof(steque_t));
+    steque_init(QUEUE_SHM);
 
 	/* Initializing the cache */
 	simplecache_init(cachedir);
@@ -89,45 +99,22 @@ int main(int argc, char **argv) {
 	if (msqid == -1)
 		perror("msgget: ");
 	// get shared memory and message queue info
-    msgrcv(msqid, &msg_seg, key_msgbuff_sizeof(), 0, 0);
-	printf("message about shm ipc: key_count = %d, key_start = %d, key_end = %d", msg_seg.key_count, msg_seg.key_start, msg_seg.key_end);
+    msgrcv(msqid, &msg_seg, key_msgbuff_sizeof(), KEY_MYTPE, 0);
+	printf("message about shm ipc: key_count = %d, key_start = %d, key_end = %d\n", msg_seg.key_count, msg_seg.key_start, msg_seg.key_end);
 
-	//Create thread pool
-	thread_list = (pthread_t *)malloc(nthreads * sizeof(pthread_t));
-	if (thread_list == (pthread_t *) NULL)
-		perror("malloc");
-
-	thread_id_list = (int *)malloc(nthreads * sizeof(int));
-	if (thread_id_list == (int *) NULL)
-		perror("malloc");
-	for (ii =0; ii < nthreads; ii++){
-	  thread_id_list[ii] = ii;
-	  pthread_create(&thread_list[ii], NULL, (void *)&sc_worker, NULL);
-	}
-
-	//create queues of shm keyid
-    //Initialize queue  structures for message and shm
-    QUEUE_SHM = malloc(sizeof(steque_t));
-    QUEUE_MES = malloc(sizeof(steque_t));
-    steque_init(QUEUE_SHM);
-    steque_init(QUEUE_MES);
     //Add the shared memory keys to a queue
-    for (ii = msg_seg.key_start; ii <= msg_seg.key_end; i++)
+    for (ii = msg_seg.key_start; ii <= msg_seg.key_end; ii++)
     {
     	steque_push(QUEUE_SHM, &ii);
     }
 
-	//start pulling from master message queue
-
-	//an item in master queue will request a path, and message_keyid which will be listening on
-	//check if path in cahce.
-	//if path in cache. aquire lock and aquire shm_keyid (queue of shm keyid is unused keys0)
-	//write to shared memory (fpath, tot_size, written_size). 
-	//if file fits in buffer message compltion_status = 1 (finished), 0 (keep reading), -1 (error)
-	//wait for read receipt = 1 (finished0) else error
-	//repeat until message a completio_status = 1
-	//wait for 
-
+	for (ii =0; ii < nthreads; ii++){
+	  thread_id_list[ii] = ii;
+	  pthread_create(&thread_list[ii], NULL, (void *)&sc_worker, NULL);
+	}
+	for (ii =0; ii < nthreads; ii++){
+	  pthread_join(&thread_list[ii], NULL);
+	}
 }
 
 
@@ -157,13 +144,15 @@ void sc_worker()
 	char_msgbuf msg_thread;
 	//create global message queue within thread
 	msqid = msgget(MESSAGE_KEY, 0777 | IPC_CREAT);
+	printf("hello\n");
 	if (msqid == -1)
 		perror("msgget");
 	while(1)
 	{
 		//grab mutex to read from queue and grab a shm resource
 		pthread_mutex_lock(&MUTEX_SHM);
-			msgrcv(msqid, &msg_thread, char_msgbuff_sizeof(), 0, 0);
+			msgrcv(msqid, &msg_thread, char_msgbuff_sizeof(), CHAR_MTYPE, 0);
+			printf("message about thread ipc: mtext = %s, mkey = %d, shmkey = %d, size_seg = %d\n", msg_thread.mtext, msg_thread.mkey, msg_thread.shmkey, msg_thread.size_seg);
 			shm_key = steque_pop(QUEUE_SHM);
 			msg_thread.shmkey = *shm_key;
 		pthread_mutex_unlock(&MUTEX_SHM);
