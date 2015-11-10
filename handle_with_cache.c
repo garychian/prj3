@@ -26,21 +26,22 @@ void mem_struct_init(struct MemoryStruct *mem);
 pthread_mutex_t MUTEX_SHM;
 ssize_t handle_with_cache(gfcontext_t *ctx, char *path, void* arg)
 {
-
+	printf("ENTER handle_with_cache\n");
 	char buffer[BUFFER_LEN];
 	struct MemoryStruct data;
 	int msgq_glob;
 	int msgq_thd;
 	int msgsend_ret;
 	key_t shm_ret;
+	key_t *mkey;
 	char_msgbuf msg;
 	shm_data_t *shm_data_p;
 
+	mkey = (key_t *)arg;
 	mem_struct_init(&data);
 	//initializing mtext (file path), mkey (final arg from handle with cache), shmkey (set to 0 initially), size_seg (set to 0 initally)
-	char_msgbuf_init(&msg, path, *(key_t *)(arg), 0, 0);
-	void char_msgbuf_prnt(&msg);
-	fprintf(stdout, "cur_easy_perform.path = %s\n", buffer);
+	char_msgbuf_init(&msg, path, *mkey, 0, 0);
+	char_msgbuf_prnt(&msg);
 	//Create global message queue. Check if msgget performed okay
 	msgq_glob = msgget(MESSAGE_KEY, 0777 | IPC_CREAT);
 	if (msgq_glob == -1)
@@ -57,50 +58,55 @@ ssize_t handle_with_cache(gfcontext_t *ctx, char *path, void* arg)
 
 	//wait on msgrcv. Upon rcv wil know if file exists and what
 	//shm data struct to access.
-	msgsend_ret = msgrcv(msgq_glob, &msg, char_msgbuff_sizeof(), 0, 0);
-
-
+	msgsend_ret = msgrcv(msgq_thd, &msg, char_msgbuff_sizeof(), CHAR_MTYPE, 0);
 	//if char_msgbuf.shmkey is = 0 (default) then cache file did not exist
 	//according to doc this should retun GF_FILE_NOT_FOUND
 	if (msgsend_ret == -1)
 		return EXIT_FAILURE;
+	else
+		char_msgbuf_prnt(&msg);
 	if (msg.shmkey == 0)
 		return gfs_sendheader(ctx, GF_FILE_NOT_FOUND, 0);
 	else
 	{
-		shm_ret = shmget(msg.shmkey, msg.size_seg, 0755 | IPC_CREAT);
+		shm_ret = shmget(msg.shmkey, msg.size_seg, 0777 | IPC_CREAT);
 		//shgmget returns -1 on failure
 		if (shm_ret == -1)
 			perror("shmget");
 		shm_data_p = (shm_data_t *)shmat(shm_ret, (void *)0, 0);
 		if (shm_data_p == (shm_data_t *)-1)
 			perror("shm_data_p");
-		while(1)
+		if (shm_data_p->fexist == NOTEXISTS)
+			return gfs_sendheader(ctx, GF_FILE_NOT_FOUND, 0);
+		else
 		{
-			pthread_mutex_lock(&shm_data_p->mutex);
-				//wait for reader to be signaled from writer
-				pthread_cond_wait(&shm_data_p->cond_read, &shm_data_p->mutex);
-				//write shm_data_p->data to data
-				write_memory_cb((void *)shm_data_p->data, shm_data_p->data_size, 1, (void *)&data);
-				//signal write that write can conditnue
-				pthread_cond_signal(&shm_data_p->cond_write);
-				//examine fexist attribute of struct.
-				if(shm_data_p->fexist == 0)
-					return gfs_sendheader(ctx, GF_FILE_NOT_FOUND, 0);
-				else if (shm_data_p->fexist == -1)
-					return EXIT_FAILURE;
-
-			pthread_mutex_unlock(&shm_data_p->mutex);
-			//when size of local data == size of file break for loop
-			if (data.size == shm_data_p->fsize)
+			while(1)
 			{
-				gfs_sendheader(ctx, GF_OK, data.size);
-				/* Sending the file contents chunk by chunk. */
-				int ret_sc = send_contents(ctx, &data);
-				if (ret_sc == 0)
-					return data.size;
-				else
-					return EXIT_FAILURE;
+				pthread_mutex_lock(&shm_data_p->mutex);
+					//wait for reader to be signaled from writer
+					pthread_cond_wait(&shm_data_p->cond_read, &shm_data_p->mutex);
+					//write shm_data_p->data to data
+					write_memory_cb((void *)shm_data_p->data, shm_data_p->data_size, 1, (void *)&data);
+					//signal write that write can conditnue
+					pthread_cond_signal(&shm_data_p->cond_write);
+					//examine fexist attribute of struct.
+					if(shm_data_p->fexist == NOTEXISTS)
+						return gfs_sendheader(ctx, GF_FILE_NOT_FOUND, 0);
+					else if (shm_data_p->fexist == -1)
+						return EXIT_FAILURE;
+
+				pthread_mutex_unlock(&shm_data_p->mutex);
+				//when size of local data == size of file break for loop
+				if (data.size == shm_data_p->fsize)
+				{
+					gfs_sendheader(ctx, GF_OK, data.size);
+					/* Sending the file contents chunk by chunk. */
+					int ret_sc = send_contents(ctx, &data);
+					if (ret_sc == 0)
+						return data.size;
+					else
+						return EXIT_FAILURE;
+				}
 			}
 		}
 	}

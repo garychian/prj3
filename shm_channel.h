@@ -4,11 +4,18 @@
 #define BUFFER_LEN 4096
 #define SHM_KEY 66666
 #define MESSAGE_KEY 9999
-#define CHAR_MTYPE 1
-#define KEY_MYTPE 2
+#define CHAR_MTYPE 1111
+#define KEY_MYTPE 2222
+#define EXISTS 1
+#define NOTEXISTS 0
 
+typedef struct shm_key_strct
+{
+	int shm_key;
+}shm_key_strct;
 
-typedef struct char_msgbuf {
+typedef struct char_msgbuf
+{
 	/*
 	This struct is used to from handle_with_cache
 	to simplecached the initial job. Because of this
@@ -50,6 +57,8 @@ typedef struct key_msgbuff
     int key_end;
 }key_msgbuff;
 
+// print key_msgbuff attributes
+void key_msgbuff_prnt(key_msgbuff *self);
 //Initializes structs to arguments. key_end determined from key_start and key_count
 void key_msgbuff_init(key_msgbuff *self, size_t size_seg, int key_count, int key_start);
 
@@ -77,6 +86,8 @@ void shm_data_clean(shm_data_t *self);
 //initailzes mutexes and conditional variables. Calculates size attributes
 //given prescribed shared memory size 
 void shm_data_init(shm_data_t *self, size_t presc_size);
+//calcs size info aobut shared memory struct
+void shm_data_sizecalc(shm_data_t *self, size_t presc_size);
 //initializes a conidition variable to be shared across processes
 int _shm_cond_var_init(pthread_cond_t *c);
 //initializes mutex to be shared across prcesses

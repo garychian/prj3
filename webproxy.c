@@ -72,14 +72,15 @@ static void _sig_handler(int signo){
 int main(int argc, char **argv) {
   int i, option_char = 0;
   int shm_ret;
+  int msgsnd_ret;
   size_t size_segments = 4096;
   unsigned short port = 8888;
   unsigned short nsegments = 1;
   unsigned short nworkerthreads = 1;
   char *server = "s3.amazonaws.com/content.udacity-data.com";
-  int msg_key, msqid;
+  int msg_key, shm_key, msqid;
+  int *thread_args;
   shm_data_t *shm_data_p;
-  key_msgbuff msg_thread;
   key_msgbuff msg_seg;
 
 
@@ -130,13 +131,12 @@ int main(int argc, char **argv) {
   gfserver_setopt(&gfs, GFS_PORT, port);
   gfserver_setopt(&gfs, GFS_MAXNPENDING, 10);
   gfserver_setopt(&gfs, GFS_WORKER_FUNC, handle_with_cache);
-  key_msgbuff_init(&msg_thread, 0, nworkerthreads, MESSAGE_KEY);
   key_msgbuff_init(&msg_seg, size_segments, nsegments, SHM_KEY);
 
   //create nsegments shared memory segments. Check return value
-  for (msg_key = msg_seg.key_start; msg_key <= msg_seg.key_end; msg_key++)
+  for (shm_key = msg_seg.key_start; shm_key <= msg_seg.key_end; shm_key++)
   {
-	  shm_ret = shmget(msg_key, msg_seg.size_seg, 0755 | IPC_CREAT);
+	  shm_ret = shmget(shm_key, msg_seg.size_seg, 0777 | IPC_CREAT);
 	  //shgmget returns -1 on failure
 	  if (shm_ret == -1)
 		  perror("shmget");
@@ -145,22 +145,25 @@ int main(int argc, char **argv) {
 		  perror("shm_data_p");
 	  //initialize data constructs (mutexes, size calculations, etc)
 	  shm_data_init(shm_data_p, size_segments);
-
   }
   //create global message queue
   msqid = msgget(MESSAGE_KEY, 0777 | IPC_CREAT);
   if (msqid == -1)
 	  perror("msgget");
   //send info about segments shared memory to simplecached
-  msgsnd(msqid, &msg_seg, key_msgbuff_sizeof(), 0);
-  //send info about thread message
-  //msgsnd(msqid, &msg_thread, key_msgbuff_sizeof(), 0);
+  msg_seg.size_seg = size_segments;
+  msgsnd_ret = msgsnd(msqid, &msg_seg, key_msgbuff_sizeof(), 0);
+  if (msgsnd_ret == -1)
+	  perror("main.msgsnd");
+
   i = 0;
-  for(msg_key = msg_thread.key_start; msg_key < msg_thread.key_end; msg_key++)
+  thread_args = (int *)malloc(nworkerthreads * sizeof(int));
+  for(msg_key = MESSAGE_KEY + 1; msg_key < MESSAGE_KEY + 1 + nworkerthreads; msg_key++)
   {
     //where optional argument is the thread specific message key id
-    //Its offset by 1 so as not to be confused with global message key 
-    gfserver_setopt(&gfs, GFS_WORKER_ARG, i, msg_key);
+    //Its offset by 1 so as not to be confused with global message key
+	thread_args[i] = msg_key;
+    gfserver_setopt(&gfs, GFS_WORKER_ARG, i, &thread_args[i]);
     i++;
   }
 

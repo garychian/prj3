@@ -8,6 +8,7 @@
 #include <sys/ipc.h>
 #include <sys/shm.h>
 #include <sys/msg.h>
+#include <errno.h>
 #include "shm_channel.h"
 #include "simplecache.h"
 #include "steque.h"
@@ -48,8 +49,10 @@ int main(int argc, char **argv) {
 	int nthreads = 1;
 	int ii;
 	int msqid;
+	int m_ret;
 	int *thread_id_list;
 	pthread_t *thread_list;
+	shm_key_strct *shm_key;
 	char option_char;
 	char *cachedir = "locals.txt";
 	key_msgbuff msg_seg;
@@ -81,6 +84,10 @@ int main(int argc, char **argv) {
 		fprintf(stderr,"Can't catch SIGTERM...exiting.\n");
 		exit(EXIT_FAILURE);
 	}
+	//Initailzze mutex used to synchronize QUEUE_SHM
+	m_ret = pthread_mutex_init(&MUTEX_SHM, NULL);
+	if (m_ret != 0)
+		perror("pthread_mutex_init");
 	//Allocate thread pool
 	thread_list = (pthread_t *)malloc(nthreads * sizeof(pthread_t));
 	if (thread_list == (pthread_t *) NULL)
@@ -100,12 +107,17 @@ int main(int argc, char **argv) {
 		perror("msgget: ");
 	// get shared memory and message queue info
     msgrcv(msqid, &msg_seg, key_msgbuff_sizeof(), KEY_MYTPE, 0);
-	printf("message about shm ipc: key_count = %d, key_start = %d, key_end = %d\n", msg_seg.key_count, msg_seg.key_start, msg_seg.key_end);
+    key_msgbuff_prnt(&msg_seg);
 
+    //malloc shm key structs
+    shm_key = (shm_key_strct *)malloc(msg_seg.key_count * sizeof(shm_key_strct));
     //Add the shared memory keys to a queue
+    int count = 0;
     for (ii = msg_seg.key_start; ii <= msg_seg.key_end; ii++)
     {
-    	steque_push(QUEUE_SHM, &ii);
+    	(shm_key + count)->shm_key = ii;
+    	steque_push(QUEUE_SHM, (shm_key + count));
+    	count++;
     }
 
 	for (ii =0; ii < nthreads; ii++){
@@ -113,7 +125,7 @@ int main(int argc, char **argv) {
 	  pthread_create(&thread_list[ii], NULL, (void *)&sc_worker, NULL);
 	}
 	for (ii =0; ii < nthreads; ii++){
-	  pthread_join(&thread_list[ii], NULL);
+	  pthread_join(thread_list[ii], NULL);
 	}
 }
 
@@ -135,30 +147,34 @@ void sc_worker()
 	void
 
 	 */
-	key_t *shm_key;
+	shm_key_strct *shm_key;
 	int fd;
 	int msqid;
 	int shm_ret;
 	int msgsend_ret;
+	int msgrcv_ret;
 	shm_data_t * shm_data_p;
 	char_msgbuf msg_thread;
+	printf("hello\n");
 	//create global message queue within thread
 	msqid = msgget(MESSAGE_KEY, 0777 | IPC_CREAT);
-	printf("hello\n");
 	if (msqid == -1)
 		perror("msgget");
 	while(1)
 	{
 		//grab mutex to read from queue and grab a shm resource
 		pthread_mutex_lock(&MUTEX_SHM);
-			msgrcv(msqid, &msg_thread, char_msgbuff_sizeof(), CHAR_MTYPE, 0);
-			printf("message about thread ipc: mtext = %s, mkey = %d, shmkey = %d, size_seg = %d\n", msg_thread.mtext, msg_thread.mkey, msg_thread.shmkey, msg_thread.size_seg);
-			shm_key = steque_pop(QUEUE_SHM);
-			msg_thread.shmkey = *shm_key;
+			msgrcv_ret = msgrcv(msqid, &msg_thread, char_msgbuff_sizeof(), CHAR_MTYPE, 0);
+			if (msgrcv_ret == -1)
+				perror("msgrcv.sc_worker");
+			//msgrcv(msqid, &msg_thread, char_msgbuff_sizeof(), 3034, 0);
+			char_msgbuf_prnt(&msg_thread);
+			shm_key = (shm_key_strct *)steque_pop(QUEUE_SHM);
+			msg_thread.shmkey = shm_key->shm_key;
 		pthread_mutex_unlock(&MUTEX_SHM);
 
 
-		shm_ret = shmget(msg_thread.shmkey, msg_thread.size_seg, 0755 | IPC_CREAT);
+		shm_ret = shmget(msg_thread.shmkey, msg_thread.size_seg, 0777 | IPC_CREAT);
 		//shgmget returns -1 on failure
 		if (shm_ret == -1)
 		  perror("shmget");
@@ -167,23 +183,30 @@ void sc_worker()
 		shm_data_clean(shm_data_p);
 		//get file descriptor frame cache. Returns -1 if not in cache
 		fd = simplecache_get((char *)msg_thread.mtext);
+		if (fd == -1)
+			shm_data_p->fexist = NOTEXISTS;
+		else
+			shm_data_p->fexist = EXISTS;
+		msg_thread.size_seg = shm_data_p->shm_size;
+
 		//send over thread message queue char_msg_buff with shm_key
-		msgsend_ret = msgsnd(msg_thread.mkey, &msg_thread, char_msgbuff_sizeof(), 0);
+		msgsend_ret = msgsnd(msqid, &msg_thread, char_msgbuff_sizeof(), 0);
 		if (msgsend_ret == -1)
 			perror("msgsnd");
+
 		if (fd == -1)
 		{
 			//sending unitialized structure (with fexist = 0) will
 			//indicate no file found. Signal awake readers
 			pthread_cond_signal(&shm_data_p->cond_read);
 			//when reader signals cond_write then write can continue
-			pthread_cond_wait(&shm_data_p->cond_write, &shm_data_p->mutex);
+			pthread_mutex_lock(&shm_data_p->mutex);
+				pthread_cond_wait(&shm_data_p->cond_write, &shm_data_p->mutex);
+			pthread_mutex_unlock(&shm_data_p->mutex);
 		}
 		else
 		{
-			shm_data_p->fexist = 1;
 			//get filesize
-
 			shm_data_p->fsize = lseek(fd, 0L, SEEK_END);
 			//read contents and send
 			while (1)
@@ -203,7 +226,9 @@ void sc_worker()
 					//signal reader that read can conditnue
 					pthread_cond_signal(&shm_data_p->cond_read);
 					//when reader signals cond_write then write can continue
-					pthread_cond_wait(&shm_data_p->cond_write, &shm_data_p->mutex);
+					pthread_mutex_lock(&shm_data_p->mutex);
+						pthread_cond_wait(&shm_data_p->cond_write, &shm_data_p->mutex);
+					pthread_mutex_unlock(&shm_data_p->mutex);
 					if (shm_data_p->data_size == 0)
 						break;
 				}
