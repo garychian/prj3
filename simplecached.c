@@ -149,92 +149,113 @@ void sc_worker()
 	 */
 	shm_key_strct *shm_key;
 	int fd;
-	int msqid;
+	int msgq_thd;
+	int msgq_glob;
 	int shm_ret;
 	int msgsend_ret;
 	int msgrcv_ret;
 	shm_data_t * shm_data_p;
 	char_msgbuf msg_thread;
-	printf("hello\n");
+	puts("simplecached.c: get from global queue");
 	//create global message queue within thread
-	msqid = msgget(MESSAGE_KEY, 0777 | IPC_CREAT);
-	if (msqid == -1)
+	msgq_glob = msgget(MESSAGE_KEY, 0777 | IPC_CREAT);
+	if (msgq_glob == -1)
 		perror("msgget");
 	while(1)
 	{
 		//grab mutex to read from queue and grab a shm resource
 		pthread_mutex_lock(&MUTEX_SHM);
-			msgrcv_ret = msgrcv(msqid, &msg_thread, char_msgbuff_sizeof(), CHAR_MTYPE, 0);
-			if (msgrcv_ret == -1)
-				perror("msgrcv.sc_worker");
-			//msgrcv(msqid, &msg_thread, char_msgbuff_sizeof(), 3034, 0);
-			char_msgbuf_prnt(&msg_thread);
 			shm_key = (shm_key_strct *)steque_pop(QUEUE_SHM);
-			msg_thread.shmkey = shm_key->shm_key;
 		pthread_mutex_unlock(&MUTEX_SHM);
 
+		puts("simplecached.c: receive from ");
+		msgrcv_ret = msgrcv(msgq_glob, &msg_thread, char_msgbuff_sizeof(), CHAR_MTYPE, 0);
+		if (msgrcv_ret == -1)
+			perror("msgrcv.sc_worker");
+		char_msgbuf_prnt(&msg_thread);
 
+		//update msg_thread attribute shmkey with shm_key from queue
+		msg_thread.shmkey = shm_key->shm_key;
+
+		//create message queue individual to handle_with_cache
+		msgq_thd = msgget(msg_thread.mkey, 0777 | IPC_CREAT);
+		if (msgq_thd == -1)
+			perror("msgget");
+
+		//create pointer to shared memory
 		shm_ret = shmget(msg_thread.shmkey, msg_thread.size_seg, 0777 | IPC_CREAT);
-		//shgmget returns -1 on failure
 		if (shm_ret == -1)
 		  perror("shmget");
 		shm_data_p = (shm_data_t *)shmat(shm_ret, (void *)0, 0);
+		if (shm_data_p == (shm_data_t *)-1)
+			perror("shmat");
 		//clean out shared memory and set rw_status to WRITE
 		shm_data_clean(shm_data_p);
+
 		//get file descriptor frame cache. Returns -1 if not in cache
 		fd = simplecache_get((char *)msg_thread.mtext);
 		if (fd == -1)
+		{
 			shm_data_p->fexist = NOTEXISTS;
 			msg_thread.existance = NOTEXISTS;
+		}
 		else
+		{
 			shm_data_p->fexist = EXISTS;
 			msg_thread.existance = EXISTS;
+		}
 		msg_thread.size_seg = shm_data_p->shm_size;
 
 		//send over thread message queue char_msg_buff with shm_key and filexist
-		msgsend_ret = msgsnd(msqid, &msg_thread, char_msgbuff_sizeof(), 0);
+		msgsend_ret = msgsnd(msgq_thd, &msg_thread, char_msgbuff_sizeof(), 0);
 		if (msgsend_ret == -1)
 			perror("msgsnd");
-
-		//wait if in read status
-		while (shm_data_p->rw_status != WRITE_STATUS)
-		{
-			pthread_mutex_lock(&shm_data_p->mutex);
-				pthread_cond_wait(&shm_data_p->cond_write, &shm_data_p->mutex);
-			pthread_mutex_unlock(&shm_data_p->mutex);
-		}
-		//if file exists do stuff. Else skip			
+		//if file exists do stuff. Else skip
 		if (fd != -1)
 		{
-			//get filesize
-			shm_data_p->fsize = lseek(fd, 0L, SEEK_END);
-			//read contents and send
+			size_t tot_data_read = 0;
+			//dont break unless no file found or contents of file sent entirely
 			while (1)
 			{
-				//try and read a block as large as allowed data size. Set data_size to amount read
-				shm_data_p->data_size = read(fd, (void *)shm_data_p->data, shm_data_p->allwd_data_size);
+				//skip wait block if already in write
+				if (shm_data_p->rw_status != WRITE_STATUS)
+				{
+					pthread_mutex_lock(&shm_data_p->mutex);
+						pthread_cond_wait(&shm_data_p->cond_write, &shm_data_p->mutex);
+					pthread_mutex_unlock(&shm_data_p->mutex);
+				}
 
-				fprintf(stdout, "sc_worker: number of bytes read %zd\n", shm_data_p->data_size);
+				//get filesize
+				shm_data_p->fsize = lseek(fd, 0L, SEEK_END);
+				//return file pointer to beginning of file
+				lseek(fd, 0L, SEEK_SET);
+				//read contents and send
+
+				//try and read a block as large as allowed data size. Set data_size to amount read
+				//todo: need to init pointer to be offset
+				shm_data_p->data_size = read(fd, (void *)shm_data_p->data, shm_data_p->allwd_data_size);
+				tot_data_read += shm_data_p->data_size;
+
+				fprintf(stdout, "sc_worker: number of bytes read %zd....%zd/%zd\n", shm_data_p->data_size, tot_data_read, shm_data_p->fsize);
 
 				if (shm_data_p->data_size == -1)
 				{
-					perror("Error reading file");
+					printf("errno = %d", errno);
 					shm_data_p->fexist = -1;
 				}
 				else
 				{
+					//set shm status to READ_STATUS
+					shm_data_p->rw_status = READ_STATUS;
 					//signal reader that read can conditnue
 					pthread_cond_signal(&shm_data_p->cond_read);
 					//when reader signals cond_write then write can continue
-					pthread_mutex_lock(&shm_data_p->mutex);
-						pthread_cond_wait(&shm_data_p->cond_write, &shm_data_p->mutex);
-					pthread_mutex_unlock(&shm_data_p->mutex);
 					if (shm_data_p->data_size == 0)
 						break;
 				}
 			}
 		}
-		shm_data_p->rw_status = READ_STATUS;
+
 		pthread_mutex_lock(&MUTEX_SHM);
 			steque_push(QUEUE_SHM, shm_key);
 		pthread_mutex_unlock(&MUTEX_SHM);

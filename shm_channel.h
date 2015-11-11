@@ -37,7 +37,7 @@ typedef struct char_msgbuf
 }char_msgbuf;
 void char_msgbuf_prnt(char_msgbuf *self);
 //0 sets contained attributes
-void char_msgbuf_init(char_msgbuf *self, char *mtext, key_t mkey, key_t shmkey, size_t size_seg);
+void char_msgbuf_init(char_msgbuf *self, char *mtext, key_t mkey, key_t shmkey, size_t size_seg, int existance);
 
 //Returns the sizeof the char_msgbuf struct (minus the long)
 size_t char_msgbuff_sizeof();
@@ -81,7 +81,7 @@ typedef struct shm_data_t{
 	size_t shm_size; //total shared memory size
 	size_t allwd_data_size; //allowed size of dynamic char *data. This is a function of shared memory size minus size of other struct attributes
 	size_t fsize; //Should be set to total data size to be written (could be larger than block)
-	size_t data_size; //size of data that currently resides in data block
+	ssize_t data_size; //size of data that currently resides in data block
 	char *data; //file data
 }shm_data_t;
 
