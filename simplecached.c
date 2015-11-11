@@ -179,32 +179,32 @@ void sc_worker()
 		if (shm_ret == -1)
 		  perror("shmget");
 		shm_data_p = (shm_data_t *)shmat(shm_ret, (void *)0, 0);
-		//clean out shared memory
+		//clean out shared memory and set rw_status to WRITE
 		shm_data_clean(shm_data_p);
 		//get file descriptor frame cache. Returns -1 if not in cache
 		fd = simplecache_get((char *)msg_thread.mtext);
 		if (fd == -1)
 			shm_data_p->fexist = NOTEXISTS;
+			msg_thread.existance = NOTEXISTS;
 		else
 			shm_data_p->fexist = EXISTS;
+			msg_thread.existance = EXISTS;
 		msg_thread.size_seg = shm_data_p->shm_size;
 
-		//send over thread message queue char_msg_buff with shm_key
+		//send over thread message queue char_msg_buff with shm_key and filexist
 		msgsend_ret = msgsnd(msqid, &msg_thread, char_msgbuff_sizeof(), 0);
 		if (msgsend_ret == -1)
 			perror("msgsnd");
 
-		if (fd == -1)
+		//wait if in read status
+		while (shm_data_p->rw_status != WRITE_STATUS)
 		{
-			//sending unitialized structure (with fexist = 0) will
-			//indicate no file found. Signal awake readers
-			pthread_cond_signal(&shm_data_p->cond_read);
-			//when reader signals cond_write then write can continue
 			pthread_mutex_lock(&shm_data_p->mutex);
 				pthread_cond_wait(&shm_data_p->cond_write, &shm_data_p->mutex);
 			pthread_mutex_unlock(&shm_data_p->mutex);
 		}
-		else
+		//if file exists do stuff. Else skip			
+		if (fd != -1)
 		{
 			//get filesize
 			shm_data_p->fsize = lseek(fd, 0L, SEEK_END);
@@ -234,6 +234,7 @@ void sc_worker()
 				}
 			}
 		}
+		shm_data_p->rw_status = READ_STATUS;
 		pthread_mutex_lock(&MUTEX_SHM);
 			steque_push(QUEUE_SHM, shm_key);
 		pthread_mutex_unlock(&MUTEX_SHM);

@@ -17,8 +17,9 @@ void char_msgbuf_prnt(char_msgbuf *self)
 	printf("mkey = %zd\n", self->mkey);
 	printf("shmkey = %zd\n", self->shmkey);
 	printf("size_seg = %zd\n", self->size_seg);
+	printf("existance = %d\n", self->existance);
 }
-void char_msgbuf_init(char_msgbuf *self, char *mtext, key_t mkey, key_t shmkey, size_t size_seg)
+void char_msgbuf_init(char_msgbuf *self, char *mtext, key_t mkey, key_t shmkey, size_t size_seg, int existance)
 {
 
 	self->mtype = CHAR_MTYPE;
@@ -27,6 +28,7 @@ void char_msgbuf_init(char_msgbuf *self, char *mtext, key_t mkey, key_t shmkey, 
 	self->mkey = mkey;
 	self->shmkey = shmkey;
 	self->size_seg = size_seg;
+	self->existance = existance;
 }
 
 int key_msgbuff_sizeof()
@@ -92,6 +94,7 @@ void shm_data_clean(shm_data_t *self)
 {
 	memset(self->path, 0, 256);
 	self->fexist = 0; //when read by handle_with_cache. 0 - FILENOTFOUND, 1, FILEFOUND, -1 set on error
+	self->rw_status = WRITE_STATUS;
 	//self->shm_size = 0;
 	//self->allwd_data_size = 0;
 	self->fsize = 0; //Should be set to total data size to be written (could be larger than block)

@@ -8,6 +8,8 @@
 #define KEY_MYTPE 2222
 #define EXISTS 1
 #define NOTEXISTS 0
+#define READ_STATUS 0
+#define WRITE_STATUS 1
 
 typedef struct shm_key_strct
 {
@@ -31,6 +33,7 @@ typedef struct char_msgbuf
     key_t mkey;
     key_t shmkey;
     size_t size_seg;
+    int existance;
 }char_msgbuf;
 void char_msgbuf_prnt(char_msgbuf *self);
 //0 sets contained attributes
@@ -72,6 +75,7 @@ typedef struct shm_data_t{
 	pthread_mutex_t mutex; //mutex used for access to shared memory (read or write)
 	pthread_cond_t cond_read; //signals that reading is now allowed
 	pthread_cond_t cond_write; //signals that writing is now allowed
+	int rw_status; // 0 (READ_STATUS) or 1 (WRITE_STATUS) ->indicates whether shm_data is in read or write state
 	char path[256]; //initilization of path
 	int fexist; //0 --- file does not exist and 1--- file path exists
 	size_t shm_size; //total shared memory size
