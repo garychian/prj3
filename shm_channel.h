@@ -97,4 +97,11 @@ int _shm_cond_var_init(pthread_cond_t *c);
 //initializes mutex to be shared across prcesses
 int _shm_mutex_var_init(pthread_mutex_t *m);
 
+typedef struct thread_arg_strct
+{
+	key_t msg_key;
+	size_t size_segs;
+
+}thread_arg_strct;
+
 #endif

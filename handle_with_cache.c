@@ -32,12 +32,16 @@ ssize_t handle_with_cache(gfcontext_t *ctx, char *path, void* arg)
 	int msgq_glob;
 	int msgq_thd;
 	int msgsend_ret;
+	size_t size_segment;
+	thread_arg_strct *thrd_arg;
 	key_t shm_ret;
 	key_t *mkey;
 	char_msgbuf msg;
 	shm_data_t *shm_data_p;
 
-	mkey = (key_t *)arg;
+	thrd_arg = (thread_arg_strct *)arg;
+	mkey = &thrd_arg->msg_key;
+	size_segment = thrd_arg->size_segs;
 	mem_struct_init(&data);
 	//initializing mtext (file path), mkey (final arg from handle with cache), shmkey (set to 0 initially), size_seg (set to 0 initally)
 	char_msgbuf_init(&msg, path, *mkey, 0, 0, EXISTS);
@@ -77,7 +81,8 @@ ssize_t handle_with_cache(gfcontext_t *ctx, char *path, void* arg)
 	{
 		puts("FOUND");
 		//get shared memory
-		shm_ret = shmget(msg.shmkey, msg.size_seg, 0777 | IPC_CREAT);
+		printf("handle_with_cached.shared memory made with key = %d and size = %zd\n",msg.shmkey, size_segment);
+		shm_ret = shmget(msg.shmkey, size_segment, 0777 | IPC_CREAT);
 		//shgmget returns -1 on failure
 		if (shm_ret == -1)
 			perror("shmget");

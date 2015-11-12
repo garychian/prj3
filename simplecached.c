@@ -56,6 +56,7 @@ int main(int argc, char **argv) {
 	char option_char;
 	char *cachedir = "locals.txt";
 	key_msgbuff msg_seg;
+	size_t size_segment;
 
 	while ((option_char = getopt_long(argc, argv, "t:c:h", gLongOptions, NULL)) != -1) {
 		switch (option_char) {
@@ -107,6 +108,7 @@ int main(int argc, char **argv) {
 		perror("msgget: ");
 	// get shared memory and message queue info
     msgrcv(msqid, &msg_seg, key_msgbuff_sizeof(), KEY_MYTPE, 0);
+    size_segment = msg_seg.size_seg;
     key_msgbuff_prnt(&msg_seg);
 
     //malloc shm key structs
@@ -122,7 +124,7 @@ int main(int argc, char **argv) {
 
 	for (ii =0; ii < nthreads; ii++){
 	  thread_id_list[ii] = ii;
-	  pthread_create(&thread_list[ii], NULL, (void *)&sc_worker, NULL);
+	  pthread_create(&thread_list[ii], NULL, (void *)&sc_worker, &msg_seg.size_seg);
 	}
 	for (ii =0; ii < nthreads; ii++){
 	  pthread_join(thread_list[ii], NULL);
@@ -130,7 +132,7 @@ int main(int argc, char **argv) {
 }
 
 
-void sc_worker()
+void sc_worker(void *size_seg)
 {
 	/*
 	 *Synopsis*
@@ -154,8 +156,10 @@ void sc_worker()
 	int shm_ret;
 	int msgsend_ret;
 	int msgrcv_ret;
+	size_t size_segment;
 	shm_data_t * shm_data_p;
 	char_msgbuf msg_thread;
+	size_segment =  *(size_t *)size_seg;
 	puts("simplecached.c: get from global queue");
 	//create global message queue within thread
 	msgq_glob = msgget(MESSAGE_KEY, 0777 | IPC_CREAT);
@@ -183,7 +187,8 @@ void sc_worker()
 			perror("msgget");
 
 		//create pointer to shared memory
-		shm_ret = shmget(msg_thread.shmkey, msg_thread.size_seg, 0777 | IPC_CREAT);
+		printf("simplecached.shared memory made with key = %d and size = %zd\n", msg_thread.shmkey, size_segment);
+		shm_ret = shmget(msg_thread.shmkey, size_segment, 0777 | IPC_CREAT);
 		if (shm_ret == -1)
 		  perror("shmget");
 		shm_data_p = (shm_data_t *)shmat(shm_ret, (void *)0, 0);
@@ -214,6 +219,10 @@ void sc_worker()
 		if (fd != -1)
 		{
 			size_t tot_data_read = 0;
+			//get filesize
+			shm_data_p->fsize = lseek(fd, 0L, SEEK_END);
+			//return file pointer to beginning of file
+			lseek(fd, 0L, SEEK_SET);
 			//dont break unless no file found or contents of file sent entirely
 			while (1)
 			{
@@ -225,10 +234,7 @@ void sc_worker()
 					pthread_mutex_unlock(&shm_data_p->mutex);
 				}
 
-				//get filesize
-				shm_data_p->fsize = lseek(fd, 0L, SEEK_END);
-				//return file pointer to beginning of file
-				lseek(fd, 0L, SEEK_SET);
+
 				//read contents and send
 
 				//try and read a block as large as allowed data size. Set data_size to amount read

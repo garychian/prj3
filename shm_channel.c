@@ -89,6 +89,9 @@ void shm_data_sizecalc(shm_data_t *self, size_t presc_size)
 	//determine allowed data size by subtracting from allocated
 	//shm size the size of struct
 	self->allwd_data_size = self->shm_size - sizeof(shm_data_t);
+	//The data is to be written past the memory contents of the struct.
+	//Use pointer arithmetic to specify
+	self->data = (char *)(self + 1);
 }
 void shm_data_clean(shm_data_t *self)
 {

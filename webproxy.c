@@ -79,7 +79,7 @@ int main(int argc, char **argv) {
   unsigned short nworkerthreads = 1;
   char *server = "s3.amazonaws.com/content.udacity-data.com";
   int msg_key, shm_key, msqid;
-  int *thread_args;
+  thread_arg_strct *thread_args;
   shm_data_t *shm_data_p;
   key_msgbuff msg_seg;
 
@@ -136,6 +136,7 @@ int main(int argc, char **argv) {
   //create nsegments shared memory segments. Check return value
   for (shm_key = msg_seg.key_start; shm_key <= msg_seg.key_end; shm_key++)
   {
+	  printf("webproxy shared memory made with key = %d and size = %zd\n", shm_key, msg_seg.size_seg);
 	  shm_ret = shmget(shm_key, msg_seg.size_seg, 0777 | IPC_CREAT);
 	  //shgmget returns -1 on failure
 	  if (shm_ret == -1)
@@ -151,18 +152,18 @@ int main(int argc, char **argv) {
   if (msqid == -1)
 	  perror("msgget");
   //send info about segments shared memory to simplecached
-  msg_seg.size_seg = size_segments;
   msgsnd_ret = msgsnd(msqid, &msg_seg, key_msgbuff_sizeof(), 0);
   if (msgsnd_ret == -1)
 	  perror("main.msgsnd");
 
   i = 0;
-  thread_args = (int *)malloc(nworkerthreads * sizeof(int));
+  thread_args = (thread_arg_strct *)malloc(nworkerthreads * sizeof(thread_arg_strct));
   for(msg_key = MESSAGE_KEY + 1; msg_key < MESSAGE_KEY + 1 + nworkerthreads; msg_key++)
   {
     //where optional argument is the thread specific message key id
     //Its offset by 1 so as not to be confused with global message key
-	thread_args[i] = msg_key;
+	thread_args[i].msg_key = msg_key;
+	thread_args[i].size_segs = msg_seg.size_seg;
     gfserver_setopt(&gfs, GFS_WORKER_ARG, i, &thread_args[i]);
     i++;
   }
