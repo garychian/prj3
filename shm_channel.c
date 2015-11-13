@@ -91,6 +91,12 @@ void shm_data_sizecalc(shm_data_t *self, size_t presc_size)
 	self->allwd_data_size = self->shm_size - sizeof(shm_data_t);
 	//The data is to be written past the memory contents of the struct.
 	//Use pointer arithmetic to specify
+	shm_data_calc_offset(self);
+	//print shared memory
+	shm_data_prnt(self);
+}
+void shm_data_calc_offset(shm_data_t *self)
+{
 	self->data = (char *)(self + 1);
 }
 void shm_data_clean(shm_data_t *self)
@@ -134,4 +140,12 @@ int _shm_mutex_var_init(pthread_mutex_t *m)
 	if (ret != 0)
 		perror("pthread_mutex_init");
 	return ret;
+}
+
+void shm_data_prnt(shm_data_t *self)
+{
+	printf("shm_data_object starts at %p\n", self);
+	printf("shm_data.path_object starts at %p\n", self->path);
+	printf("shm_data.data starts at %p\n", self->data);
+	printf("shm_data object offset starts at %p\n", self + 1);
 }

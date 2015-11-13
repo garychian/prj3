@@ -47,16 +47,16 @@ void Usage() {
 
 int main(int argc, char **argv) {
 	int nthreads = 1;
-	int ii;
-	int msqid;
-	int m_ret;
-	int *thread_id_list;
-	pthread_t *thread_list;
-	shm_key_strct *shm_key;
+	int ii = 0;
+	int msqid = 0;
+	int m_ret = 0;
+	int *thread_id_list = NULL;
+	pthread_t *thread_list = NULL;
+	shm_key_strct *shm_key = NULL;
 	char option_char;
 	char *cachedir = "locals.txt";
-	key_msgbuff msg_seg;
-	size_t size_segment;
+	key_msgbuff msg_seg = { .mtype = MESSAGE_KEY, .size_seg = 0, .key_start = 0, .key_end = 0 };
+	size_t size_segment = 0;
 
 	while ((option_char = getopt_long(argc, argv, "t:c:h", gLongOptions, NULL)) != -1) {
 		switch (option_char) {
@@ -107,6 +107,7 @@ int main(int argc, char **argv) {
 	if (msqid == -1)
 		perror("msgget: ");
 	// get shared memory and message queue info
+	printf("simplecached: receieve message %d\n", MESSAGE_KEY);
     msgrcv(msqid, &msg_seg, key_msgbuff_sizeof(), KEY_MYTPE, 0);
     size_segment = msg_seg.size_seg;
     key_msgbuff_prnt(&msg_seg);
@@ -150,15 +151,15 @@ void sc_worker(void *size_seg)
 
 	 */
 	shm_key_strct *shm_key;
-	int fd;
-	int msgq_thd;
-	int msgq_glob;
-	int shm_ret;
-	int msgsend_ret;
-	int msgrcv_ret;
-	size_t size_segment;
-	shm_data_t * shm_data_p;
-	char_msgbuf msg_thread;
+	int fd = 0;
+	int msgq_thd = 0;
+	int msgq_glob = 0;
+	int shm_ret = 0;
+	int msgsend_ret = 0;
+	int msgrcv_ret = 0;
+	size_t size_segment = 0;
+	shm_data_t * shm_data_p = NULL;
+	char_msgbuf msg_thread = {.mtype = CHAR_MTYPE, .mtext = "", .mkey = 0, .shmkey = 0, .size_seg = 0, .existance = NOTEXISTS};
 	size_segment =  *(size_t *)size_seg;
 	puts("simplecached.c: get from global queue");
 	//create global message queue within thread
@@ -173,6 +174,7 @@ void sc_worker(void *size_seg)
 		pthread_mutex_unlock(&MUTEX_SHM);
 
 		puts("simplecached.c: receive from ");
+		printf("simplecached.sc_worker: receieve message %d\n", MESSAGE_KEY);
 		msgrcv_ret = msgrcv(msgq_glob, &msg_thread, char_msgbuff_sizeof(), CHAR_MTYPE, 0);
 		if (msgrcv_ret == -1)
 			perror("msgrcv.sc_worker");
@@ -195,8 +197,14 @@ void sc_worker(void *size_seg)
 		if (shm_data_p == (shm_data_t *)-1)
 			perror("shmat");
 		//clean out shared memory and set rw_status to WRITE
+		puts("*******************************************");
+		puts("simplecached shared memory b4 clean");
+		shm_data_prnt(shm_data_p);
 		shm_data_clean(shm_data_p);
-
+		shm_data_calc_offset(shm_data_p);
+		puts("*******************************************");
+		puts("simplecached shared memory after clean and reset");
+		shm_data_prnt(shm_data_p);
 		//get file descriptor frame cache. Returns -1 if not in cache
 		fd = simplecache_get((char *)msg_thread.mtext);
 		if (fd == -1)
@@ -212,6 +220,7 @@ void sc_worker(void *size_seg)
 		msg_thread.size_seg = shm_data_p->shm_size;
 
 		//send over thread message queue char_msg_buff with shm_key and filexist
+		printf("simplecached.sc_worker: send message %d\n", msg_thread.mkey);
 		msgsend_ret = msgsnd(msgq_thd, &msg_thread, char_msgbuff_sizeof(), 0);
 		if (msgsend_ret == -1)
 			perror("msgsnd");
@@ -239,7 +248,7 @@ void sc_worker(void *size_seg)
 
 				//try and read a block as large as allowed data size. Set data_size to amount read
 				//todo: need to init pointer to be offset
-				shm_data_p->data_size = read(fd, (void *)shm_data_p->data, shm_data_p->allwd_data_size);
+				shm_data_p->data_size = read(fd, (void *)(shm_data_p + 1), shm_data_p->allwd_data_size);
 				tot_data_read += shm_data_p->data_size;
 
 				fprintf(stdout, "sc_worker: number of bytes read %zd....%zd/%zd\n", shm_data_p->data_size, tot_data_read, shm_data_p->fsize);
@@ -248,6 +257,7 @@ void sc_worker(void *size_seg)
 				{
 					printf("errno = %d", errno);
 					shm_data_p->fexist = -1;
+					break;
 				}
 				else
 				{

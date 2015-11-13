@@ -58,13 +58,14 @@ ssize_t handle_with_cache(gfcontext_t *ctx, char *path, void* arg)
 		perror("msgget");
 
 	//Add message struct (path to query) to the queue
+	printf("handle_with_cache: send message with key %d\n", MESSAGE_KEY);
 	msgsend_ret = msgsnd(msgq_glob, &msg, char_msgbuff_sizeof(), 0);
 	if (msgsend_ret != 0)
 		perror("msgsnd");
 
 	//wait on msgrcv. Upon rcv wil know if file exists and what
 	//shm data struct to access.
-	puts("handle_with_cache: wait on message return");
+	printf("handle_with_cache: wait on message return with key %d\n", msg.mkey);
 	msgsend_ret = msgrcv(msgq_thd, &msg, char_msgbuff_sizeof(), CHAR_MTYPE, 0);
 	//if char_msgbuf.shmkey is = 0 (default) then cache file did not exist
 	//according to doc this should retun GF_FILE_NOT_FOUND
@@ -89,21 +90,26 @@ ssize_t handle_with_cache(gfcontext_t *ctx, char *path, void* arg)
 		shm_data_p = (shm_data_t *)shmat(shm_ret, (void *)0, 0);
 		if (shm_data_p == (shm_data_t *)-1)
 			perror("shm_data_p");
-
+		puts("*******************************************");
+		puts("handle_with_cache shared memory");
+		shm_data_prnt(shm_data_p);
+		shm_data_calc_offset(shm_data_p);
+		puts("*******************************************");
+		puts("handle_with_cache shared memory clean and reset");
+		shm_data_prnt(shm_data_p);
 		size_t tot_data_read = 0;
 		while(1)
 		{
 			//skip wait block if already in read
 			if (shm_data_p->rw_status != READ_STATUS)
 			{
-
 				pthread_mutex_lock(&shm_data_p->mutex);
 					pthread_cond_wait(&shm_data_p->cond_read, &shm_data_p->mutex);
 				pthread_mutex_unlock(&shm_data_p->mutex);
 			}
 ;
 			//write shm_data_p->data to data
-			write_memory_cb((void *)shm_data_p->data, shm_data_p->data_size, 1, (void *)&data);
+			write_memory_cb((void *)(shm_data_p + 1), shm_data_p->data_size, 1, (void *)&data);
 			tot_data_read += shm_data_p->data_size;
 			//print of status
 			fprintf(stdout, "sc_worker: number of bytes read %zd....%zd/%zd\n", shm_data_p->data_size, tot_data_read, shm_data_p->fsize);

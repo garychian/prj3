@@ -70,18 +70,21 @@ static void _sig_handler(int signo){
 
 /* Main ========================================================= */
 int main(int argc, char **argv) {
-  int i, option_char = 0;
-  int shm_ret;
-  int msgsnd_ret;
+  int i = 0;
+  int option_char = 0;
+  int shm_ret = 0;
+  int msgsnd_ret = 0;
   size_t size_segments = 4096;
   unsigned short port = 8888;
   unsigned short nsegments = 1;
   unsigned short nworkerthreads = 1;
   char *server = "s3.amazonaws.com/content.udacity-data.com";
-  int msg_key, shm_key, msqid;
-  thread_arg_strct *thread_args;
-  shm_data_t *shm_data_p;
-  key_msgbuff msg_seg;
+  int msg_key = 0;
+  int shm_key = 0;
+  int msqid = 0;
+  thread_arg_strct *thread_args = NULL;
+  shm_data_t *shm_data_p = NULL;
+  key_msgbuff msg_seg = { .mtype = MESSAGE_KEY, .size_seg = 0, .key_start = 0, .key_end = 0 };
 
 
   if (signal(SIGINT, _sig_handler) == SIG_ERR){
@@ -146,12 +149,15 @@ int main(int argc, char **argv) {
 		  perror("shm_data_p");
 	  //initialize data constructs (mutexes, size calculations, etc)
 	  shm_data_init(shm_data_p, size_segments);
+	  puts("*******************************************");
+	  shm_data_prnt(shm_data_p);
   }
   //create global message queue
   msqid = msgget(MESSAGE_KEY, 0777 | IPC_CREAT);
   if (msqid == -1)
 	  perror("msgget");
   //send info about segments shared memory to simplecached
+  printf("webproxy: send message with key %d\n", MESSAGE_KEY);
   msgsnd_ret = msgsnd(msqid, &msg_seg, key_msgbuff_sizeof(), 0);
   if (msgsnd_ret == -1)
 	  perror("main.msgsnd");

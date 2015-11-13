@@ -90,12 +90,15 @@ void shm_data_clean(shm_data_t *self);
 //initailzes mutexes and conditional variables. Calculates size attributes
 //given prescribed shared memory size 
 void shm_data_init(shm_data_t *self, size_t presc_size);
+void shm_data_calc_offset(shm_data_t *self);
 //calcs size info aobut shared memory struct
 void shm_data_sizecalc(shm_data_t *self, size_t presc_size);
 //initializes a conidition variable to be shared across processes
 int _shm_cond_var_init(pthread_cond_t *c);
 //initializes mutex to be shared across prcesses
 int _shm_mutex_var_init(pthread_mutex_t *m);
+
+void shm_data_prnt(shm_data_t *self);
 
 typedef struct thread_arg_strct
 {
