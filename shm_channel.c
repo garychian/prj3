@@ -16,10 +16,9 @@ void char_msgbuf_prnt(char_msgbuf *self)
 	printf("mtext = %s\n", self->mtext);
 	printf("mkey = %zd\n", self->mkey);
 	printf("shmkey = %zd\n", self->shmkey);
-	printf("size_seg = %zd\n", self->size_seg);
 	printf("existance = %d\n", self->existance);
 }
-void char_msgbuf_init(char_msgbuf *self, char *mtext, key_t mkey, key_t shmkey, size_t size_seg, int existance)
+void char_msgbuf_init(char_msgbuf *self, char *mtext, key_t mkey, key_t shmkey, int existance)
 {
 
 	self->mtype = CHAR_MTYPE;
@@ -27,7 +26,6 @@ void char_msgbuf_init(char_msgbuf *self, char *mtext, key_t mkey, key_t shmkey, 
 	strcpy(self->mtext, mtext);
 	self->mkey = mkey;
 	self->shmkey = shmkey;
-	self->size_seg = size_seg;
 	self->existance = existance;
 }
 
@@ -53,7 +51,7 @@ void key_msgbuff_init(key_msgbuff *self, size_t size_seg, int key_count, int key
 	self->key_start = key_start;
 	self->key_end = key_start + key_count - 1;
 }
-void shm_data_init(shm_data_t *self, size_t presc_size)
+void shm_init(shm_struct *self, size_t presc_size)
 {
 	/*
 	given self initilize a process shared mutex.
@@ -67,11 +65,11 @@ void shm_data_init(shm_data_t *self, size_t presc_size)
 	_shm_cond_var_init(&(self->cond_write));
 
 	//initilize data structure to 0
-	shm_data_clean(self);
+	shm_clean(self);
 	//calculate sizes
-	shm_data_sizecalc(self, presc_size);
+	shm_sizecalc(self, presc_size);
 }
-void shm_data_sizecalc(shm_data_t *self, size_t presc_size)
+void shm_sizecalc(shm_struct *self, size_t presc_size)
 {
 	size_t ps;
 	size_t rem;
@@ -88,18 +86,13 @@ void shm_data_sizecalc(shm_data_t *self, size_t presc_size)
 		self->shm_size = (presc_size / ps) * (ps + 1);
 	//determine allowed data size by subtracting from allocated
 	//shm size the size of struct
-	self->allwd_data_size = self->shm_size - sizeof(shm_data_t);
-	//The data is to be written past the memory contents of the struct.
-	//Use pointer arithmetic to specify
-	shm_data_calc_offset(self);
+	self->allwd_data_size = self->shm_size - sizeof(shm_struct);
+
 	//print shared memory
 	shm_data_prnt(self);
 }
-void shm_data_calc_offset(shm_data_t *self)
-{
-	self->data = (char *)(self + 1);
-}
-void shm_data_clean(shm_data_t *self)
+
+void shm_clean(shm_struct *self)
 {
 	memset(self->path, 0, 256);
 	self->fexist = 0; //when read by handle_with_cache. 0 - FILENOTFOUND, 1, FILEFOUND, -1 set on error
@@ -142,10 +135,9 @@ int _shm_mutex_var_init(pthread_mutex_t *m)
 	return ret;
 }
 
-void shm_data_prnt(shm_data_t *self)
+void shm_data_prnt(shm_struct *self)
 {
 	printf("shm_data_object starts at %p\n", self);
 	printf("shm_data.path_object starts at %p\n", self->path);
-	printf("shm_data.data starts at %p\n", self->data);
-	printf("shm_data object offset starts at %p\n", self + 1);
+	printf("shm_data.data starts at %p\n", self + 1);
 }

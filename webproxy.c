@@ -83,7 +83,7 @@ int main(int argc, char **argv) {
   int shm_key = 0;
   int msqid = 0;
   thread_arg_strct *thread_args = NULL;
-  shm_data_t *shm_data_p = NULL;
+  shm_struct *shm_data_p = NULL;
   key_msgbuff msg_seg = { .mtype = MESSAGE_KEY, .size_seg = 0, .key_start = 0, .key_end = 0 };
 
 
@@ -140,15 +140,15 @@ int main(int argc, char **argv) {
   for (shm_key = msg_seg.key_start; shm_key <= msg_seg.key_end; shm_key++)
   {
 	  printf("webproxy shared memory made with key = %d and size = %zd\n", shm_key, msg_seg.size_seg);
-	  shm_ret = shmget(shm_key, msg_seg.size_seg, 0777 | IPC_CREAT);
+	  shm_ret = shmget(shm_key, size_segments, 0777 | IPC_CREAT);
 	  //shgmget returns -1 on failure
 	  if (shm_ret == -1)
 		  perror("shmget");
-	  shm_data_p = (shm_data_t *)shmat(shm_ret, (void *)0, 0);
-	  if (shm_data_p == (shm_data_t *)-1)
+	  shm_data_p = (shm_struct *)shmat(shm_ret, (void *)0, 0);
+	  if (shm_data_p == (shm_struct *)-1)
 		  perror("shm_data_p");
 	  //initialize data constructs (mutexes, size calculations, etc)
-	  shm_data_init(shm_data_p, size_segments);
+	  shm_init(shm_data_p, size_segments);
 	  puts("*******************************************");
 	  shm_data_prnt(shm_data_p);
   }

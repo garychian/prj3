@@ -1,13 +1,14 @@
 #ifndef SHM_CHANNEL_H
 #define SHM_CHANNEL_H
+
 #include <sys/msg.h>
 #define BUFFER_LEN 4096
 #define SHM_KEY 66666
 #define MESSAGE_KEY 9999
 #define CHAR_MTYPE 1111
 #define KEY_MYTPE 2222
-#define EXISTS 1
 #define NOTEXISTS 0
+#define EXISTS 1
 #define READ_STATUS 0
 #define WRITE_STATUS 1
 
@@ -32,12 +33,11 @@ typedef struct char_msgbuf
     char mtext[BUFFER_LEN];
     key_t mkey;
     key_t shmkey;
-    size_t size_seg;
     int existance;
 }char_msgbuf;
 void char_msgbuf_prnt(char_msgbuf *self);
 //0 sets contained attributes
-void char_msgbuf_init(char_msgbuf *self, char *mtext, key_t mkey, key_t shmkey, size_t size_seg, int existance);
+void char_msgbuf_init(char_msgbuf *self, char *mtext, key_t mkey, key_t shmkey, int existance);
 
 //Returns the sizeof the char_msgbuf struct (minus the long)
 size_t char_msgbuff_sizeof();
@@ -68,10 +68,11 @@ void key_msgbuff_init(key_msgbuff *self, size_t size_seg, int key_count, int key
 //returns size of struct sans long
 int key_msgbuff_sizeof();
 
-/*This is the struct passed to shared memory.
-
+/*This is the struct passed to shared memory. Dynamic data is written
+ * directly following the structs location in shm.
 */
-typedef struct shm_data_t{
+typedef struct shm_struct
+{
 	pthread_mutex_t mutex; //mutex used for access to shared memory (read or write)
 	pthread_cond_t cond_read; //signals that reading is now allowed
 	pthread_cond_t cond_write; //signals that writing is now allowed
@@ -82,23 +83,22 @@ typedef struct shm_data_t{
 	size_t allwd_data_size; //allowed size of dynamic char *data. This is a function of shared memory size minus size of other struct attributes
 	size_t fsize; //Should be set to total data size to be written (could be larger than block)
 	ssize_t data_size; //size of data that currently resides in data block
-	char *data; //file data
-}shm_data_t;
+}shm_struct;
 
-//this function zero sets shm_data_t attributes
-void shm_data_clean(shm_data_t *self);
+//this function zero sets shm_struct attributes
+void shm_clean(shm_struct *self);
 //initailzes mutexes and conditional variables. Calculates size attributes
 //given prescribed shared memory size 
-void shm_data_init(shm_data_t *self, size_t presc_size);
-void shm_data_calc_offset(shm_data_t *self);
+void shm_init(shm_struct *self, size_t presc_size);
+
 //calcs size info aobut shared memory struct
-void shm_data_sizecalc(shm_data_t *self, size_t presc_size);
+void shm_sizecalc(shm_struct *self, size_t presc_size);
 //initializes a conidition variable to be shared across processes
 int _shm_cond_var_init(pthread_cond_t *c);
 //initializes mutex to be shared across prcesses
 int _shm_mutex_var_init(pthread_mutex_t *m);
 
-void shm_data_prnt(shm_data_t *self);
+void shm_data_prnt(shm_struct *self);
 
 typedef struct thread_arg_strct
 {

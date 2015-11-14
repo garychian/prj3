@@ -27,24 +27,21 @@ pthread_mutex_t MUTEX_SHM;
 ssize_t handle_with_cache(gfcontext_t *ctx, char *path, void* arg)
 {
 	printf("ENTER handle_with_cache\n");
-	char buffer[BUFFER_LEN];
 	struct MemoryStruct data;
 	int msgq_glob;
 	int msgq_thd;
 	int msgsend_ret;
-	size_t size_segment;
-	thread_arg_strct *thrd_arg;
-	key_t shm_ret;
-	key_t *mkey;
-	char_msgbuf msg;
-	shm_data_t *shm_data_p;
 
-	thrd_arg = (thread_arg_strct *)arg;
-	mkey = &thrd_arg->msg_key;
-	size_segment = thrd_arg->size_segs;
+	thread_arg_strct *thrd_arg = (thread_arg_strct *)arg;
+	size_t size_segment = thrd_arg->size_segs;;
+	key_t shm_ret;
+	key_t *mkey = &thrd_arg->msg_key;
+	char_msgbuf msg;
+	shm_struct *shm_data_p;
+
 	mem_struct_init(&data);
-	//initializing mtext (file path), mkey (final arg from handle with cache), shmkey (set to 0 initially), size_seg (set to 0 initally)
-	char_msgbuf_init(&msg, path, *mkey, 0, 0, EXISTS);
+	//initializing mtext (file path), mkey (final arg from handle with cache), shmkey (set to 0 initially)
+	char_msgbuf_init(&msg, path, *mkey, 0, EXISTS);
 	puts("handle_With_cache");
 	char_msgbuf_prnt(&msg);
 	//Create global message queue. Check if msgget performed okay
@@ -87,13 +84,10 @@ ssize_t handle_with_cache(gfcontext_t *ctx, char *path, void* arg)
 		//shgmget returns -1 on failure
 		if (shm_ret == -1)
 			perror("shmget");
-		shm_data_p = (shm_data_t *)shmat(shm_ret, (void *)0, 0);
-		if (shm_data_p == (shm_data_t *)-1)
+		shm_data_p = (shm_struct *)shmat(shm_ret, (void *)0, 0);
+		if (shm_data_p == (shm_struct *)-1)
 			perror("shm_data_p");
-		puts("*******************************************");
-		puts("handle_with_cache shared memory");
-		shm_data_prnt(shm_data_p);
-		shm_data_calc_offset(shm_data_p);
+
 		puts("*******************************************");
 		puts("handle_with_cache shared memory clean and reset");
 		shm_data_prnt(shm_data_p);
@@ -107,8 +101,8 @@ ssize_t handle_with_cache(gfcontext_t *ctx, char *path, void* arg)
 					pthread_cond_wait(&shm_data_p->cond_read, &shm_data_p->mutex);
 				pthread_mutex_unlock(&shm_data_p->mutex);
 			}
-;
-			//write shm_data_p->data to data
+
+			//write contents of shm (from prescribed offset) to data
 			write_memory_cb((void *)(shm_data_p + 1), shm_data_p->data_size, 1, (void *)&data);
 			tot_data_read += shm_data_p->data_size;
 			//print of status
