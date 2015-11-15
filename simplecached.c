@@ -17,11 +17,43 @@
 steque_t * QUEUE_SHM; //queue max len equal to number of shm segments
 pthread_mutex_t MUTEX_SHM;
 pthread_cond_t COND_SHM;
+key_msgbuff SHM_KEY_INFO = { .mtype = MESSAGE_KEY, .size_seg = 0, .key_start = 0, .key_end = 0 };
 void sc_worker();
 size_t get_filesize(int fd);
-static void _sig_handler(int signo){
-	if (signo == SIGINT || signo == SIGTERM){
-		/* Unlink IPC mechanisms here*/
+static void _sig_handler(int signo)
+{
+	if (signo == SIGINT || signo == SIGTERM)
+	{
+		shm_struct *shm_data_p = NULL;
+		int shmid = 0;
+		int shm_key = 0;
+		int shm_ret = 0;
+
+		//Detach and remove shared memories (Loop through all used keys
+		for (shm_key = SHM_KEY_INFO.key_start; shm_key <= SHM_KEY_INFO.key_end; shm_key++)
+		{
+
+			key_msgbuff_prnt(&SHM_KEY_INFO);
+			shmid = shmget(shm_key, SHM_KEY_INFO.size_seg, 0777 | IPC_CREAT);
+			//shgmget returns -1 on failure
+			if (shmid == -1)
+				  perror("shmget");
+			shm_data_p = (shm_struct *)shmat(shmid, (void *)0, 0);
+			if (shm_data_p == (shm_struct *)-1)
+				  perror("shm_data_p");
+
+			//detach shared memory
+			shm_ret = shmdt(shm_data_p);
+			printf("shmdt.shm_ret %d\n", shm_ret);
+			if (shm_ret == -1)
+				perror("shmdt");
+
+			//destroy shared memory
+			shm_ret = shmctl(shmid, IPC_RMID, NULL);
+			printf("shmctl.shm_ret %d\n", shm_ret);
+			if (shm_ret == -1)
+				perror("shmctl");
+		}
 		exit(signo);
 	}
 }
@@ -89,20 +121,31 @@ int main(int argc, char **argv) {
 	//Initailzze mutex and condition var used to synchronize QUEUE_SHM
 	m_ret = pthread_mutex_init(&MUTEX_SHM, NULL);
 	if (m_ret != 0)
+	{
 		perror("pthread_mutex_init");
+		return EXIT_FAILURE;
+	}
+
 
 	c_ret = pthread_cond_init(&COND_SHM, NULL);
 	if (c_ret != 0)
+	{
 		perror("pthread_cond_init");
-
+		return EXIT_FAILURE;
+	}
 	//Allocate thread pool
 	thread_list = (pthread_t *)malloc(nthreads * sizeof(pthread_t));
 	if (thread_list == (pthread_t *) NULL)
+	{
 		perror("thread_list: malloc");
+		return EXIT_FAILURE;
+	}
 	thread_id_list = (int *)malloc(nthreads * sizeof(int));
 	if (thread_id_list == (int *) NULL)
+	{
 		perror("thread_id_list: malloc");
-
+		return EXIT_FAILURE;
+	}
     //Initialize queue  structures for message and shm
     QUEUE_SHM = malloc(sizeof(steque_t));
     steque_init(QUEUE_SHM);
@@ -111,10 +154,11 @@ int main(int argc, char **argv) {
 	simplecache_init(cachedir);
 	msqid = msgget(MESSAGE_KEY, 0777 | IPC_CREAT);
 	if (msqid == -1)
-		perror("msgget: ");
+		perror("msgget");
 	// get shared memory and message queue info
 	printf("simplecached: receieve message %d\n", MESSAGE_KEY);
     msgrcv(msqid, &msg_seg, key_msgbuff_sizeof(), KEY_MYTPE, 0);
+    key_msgbuff_seteq(&SHM_KEY_INFO, &msg_seg);
     key_msgbuff_prnt(&msg_seg);
 
     //malloc shm key structs
@@ -278,6 +322,11 @@ void sc_worker(void *size_seg)
 				}
 			}
 		}
+
+		//detach from shared memory
+		shm_ret = shmdt(shm_data_p);
+		if (shm_ret == -1)
+			perror("shmdt");
 
 		//make Shared Memory available in queue after completion. Also signal
 		pthread_mutex_lock(&MUTEX_SHM);

@@ -87,7 +87,6 @@ ssize_t handle_with_cache(gfcontext_t *ctx, char *path, void* arg)
 		shm_data_p = (shm_struct *)shmat(shm_ret, (void *)0, 0);
 		if (shm_data_p == (shm_struct *)-1)
 			perror("shm_data_p");
-
 		puts("*******************************************");
 		puts("handle_with_cache shared memory clean and reset");
 		shm_data_prnt(shm_data_p);

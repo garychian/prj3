@@ -65,6 +65,8 @@ void key_msgbuff_prnt(key_msgbuff *self);
 //Initializes structs to arguments. key_end determined from key_start and key_count
 void key_msgbuff_init(key_msgbuff *self, size_t size_seg, int key_count, int key_start);
 
+//Sets self to have attributes equal to that of set_eq_to
+void key_msgbuff_seteq(key_msgbuff *self, key_msgbuff *set_eq_to);
 //returns size of struct sans long
 int key_msgbuff_sizeof();
 
@@ -99,6 +101,8 @@ int _shm_cond_var_init(pthread_cond_t *c);
 int _shm_mutex_var_init(pthread_mutex_t *m);
 
 void shm_data_prnt(shm_struct *self);
+
+shm_struct * shm_get(key_t shm_key, size_t size_segments);
 
 typedef struct thread_arg_strct
 {

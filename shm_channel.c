@@ -2,6 +2,8 @@
 #include <unistd.h>
 #include <string.h>
 #include <stdio.h>
+#include <sys/shm.h>
+#include <stdlib.h>
 
 #include "shm_channel.h"
 
@@ -50,6 +52,16 @@ void key_msgbuff_init(key_msgbuff *self, size_t size_seg, int key_count, int key
 	self->key_count = key_count;
 	self->key_start = key_start;
 	self->key_end = key_start + key_count - 1;
+}
+
+void key_msgbuff_seteq(key_msgbuff *self, key_msgbuff *set_eq_to)
+{
+	self->mtype = set_eq_to->mtype;
+	self->size_seg = set_eq_to->size_seg;
+	self->key_count = set_eq_to->key_count;
+	self->key_start = set_eq_to->key_start;
+	self->key_end = set_eq_to->key_end;
+
 }
 void shm_init(shm_struct *self, size_t presc_size)
 {
@@ -140,4 +152,19 @@ void shm_data_prnt(shm_struct *self)
 	printf("shm_data_object starts at %p\n", self);
 	printf("shm_data.path_object starts at %p\n", self->path);
 	printf("shm_data.data starts at %p\n", self + 1);
+}
+
+shm_struct * shm_get(int shm_key, size_t size_segments)
+{
+	int shm_ret = 0;
+	shm_struct * shm_data_p = (shm_struct *)malloc(sizeof *shm_data_p);
+
+	shm_ret = shmget(shm_key, size_segments, 0777 | IPC_CREAT);
+	//shgmget returns -1 on failure
+	if (shm_ret == -1)
+		  perror("shmget");
+	shm_data_p = (shm_struct *)shmat(shm_ret, (void *)0, 0);
+	if (shm_data_p == (shm_struct *)-1)
+		  perror("shm_data_p");
+	return shm_data_p;
 }
