@@ -118,9 +118,15 @@ ssize_t handle_with_cache(gfcontext_t *ctx, char *path, void* arg)
 				/* Sending the file contents chunk by chunk. */
 				int ret_sc = send_contents(ctx, &data);
 				if (ret_sc == 0)
-					return data.size;
+				{
+					free(data.memory);
+					return shm_data_p->fsize;
+				}
 				else
+				{
+					free(data.memory);
 					return EXIT_FAILURE;
+				}
 			}
 		}
 	}
