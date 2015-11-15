@@ -39,12 +39,14 @@ ssize_t handle_with_curl(gfcontext_t *ctx, char *path, void* arg){
 	curl_easy_setopt(easy_handle, CURLOPT_WRITEFUNCTION, write_memory_cb);
 	curl_easy_setopt(easy_handle, CURLOPT_WRITEDATA, (void *)&data);
 	curl_ret_code = curl_easy_perform(easy_handle);
+	curl_easy_cleanup(easy_handle);
 	//performed okay
 	if (curl_ret_code == 0){
 		printf("%lu bytes retrieved\n", (long)data.size);
 		gfs_sendheader(ctx, GF_OK, data.size);
 		/* Sending the file contents chunk by chunk. */
 		int ret_sc = send_contents(ctx, &data);
+		free(data.memory);
 		if (ret_sc == 0)
 			return data.size;
 		else
@@ -54,10 +56,12 @@ ssize_t handle_with_curl(gfcontext_t *ctx, char *path, void* arg){
 	}
 	//couldn't resolve host
 	else if (curl_ret_code == 22){
+		free(data.memory);
 		return gfs_sendheader(ctx, GF_FILE_NOT_FOUND, 0);
 	}
 	//any other error, it must have been server error. gfserver library will handle
 	else{
+		free(data.memory);
 		return EXIT_FAILURE;
 	}
 
